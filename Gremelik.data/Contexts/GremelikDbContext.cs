@@ -1,4 +1,3 @@
-
 using Gremelik.core.Entities;
 using Microsoft.EntityFrameworkCore;
 using System;
@@ -39,8 +38,17 @@ namespace Gremelik.data.Contexts
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
+            base.OnModelCreating(modelBuilder);
+
+            // ESTO ES LO NUEVO:
+            // Permite que la CURP se repita, PERO NO en la misma escuela.
+            modelBuilder.Entity<Alumno>()
+                .HasIndex(a => new { a.CURP, a.EscuelaId })
+                .IsUnique();
+
+            // Configuración de la relación Alumno-Tutor (Llave compuesta)
             modelBuilder.Entity<RelacionAlumnoTutor>()
-                .HasKey(r => new { r.AlumnoId, r.TutorId });
+                .HasKey(rat => new { rat.AlumnoId, rat.TutorId });
         }
     }
 }

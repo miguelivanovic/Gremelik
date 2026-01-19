@@ -29,7 +29,7 @@ namespace Gremelik.API.Controllers
 
         // GET: api/Escuelas/5
         [HttpGet("{id}")]
-        public async Task<ActionResult<Escuela>> GetEscuela(int id)
+        public async Task<ActionResult<Escuela>> GetEscuela(Guid id)
         {
             var escuela = await _context.Escuelas.FindAsync(id);
 
@@ -43,7 +43,7 @@ namespace Gremelik.API.Controllers
 
         // PUT: api/Escuelas/5
         [HttpPut("{id}")]
-        public async Task<IActionResult> PutEscuela(int id, Escuela escuela)
+        public async Task<IActionResult> PutEscuela(Guid id, Escuela escuela)
         {
             if (id != escuela.Id)
             {
@@ -88,7 +88,7 @@ namespace Gremelik.API.Controllers
 
         // DELETE: api/Escuelas/5
         [HttpDelete("{id}")]
-        public async Task<IActionResult> DeleteEscuela(int id)
+        public async Task<IActionResult> DeleteEscuela(Guid id)
         {
             var escuela = await _context.Escuelas.FindAsync(id);
             if (escuela == null)
@@ -102,7 +102,7 @@ namespace Gremelik.API.Controllers
             return NoContent();
         }
 
-        private bool EscuelaExists(int id)
+        private bool EscuelaExists(Guid id)
         {
             return _context.Escuelas.Any(e => e.Id == id);
         }

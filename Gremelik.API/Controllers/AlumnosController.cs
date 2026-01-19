@@ -29,7 +29,7 @@ namespace Gremelik.API.Controllers
 
         // GET: api/Alumnos/5
         [HttpGet("{id}")]
-        public async Task<ActionResult<Alumno>> GetAlumno(int id)
+        public async Task<ActionResult<Alumno>> GetAlumno(Guid id)
         {
             var alumno = await _context.Alumnos.FindAsync(id);
 
@@ -43,7 +43,7 @@ namespace Gremelik.API.Controllers
 
         // PUT: api/Alumnos/5
         [HttpPut("{id}")]
-        public async Task<IActionResult> PutAlumno(int id, Alumno alumno)
+        public async Task<IActionResult> PutAlumno(Guid id, Alumno alumno)
         {
             if (id != alumno.Id)
             {
@@ -75,20 +75,35 @@ namespace Gremelik.API.Controllers
         [HttpPost]
         public async Task<ActionResult<Alumno>> PostAlumno(Alumno alumno)
         {
+            // Validaciones básicas de datos (opcional)
+            if (alumno.Usuario == null) alumno.Usuario = "Admin";
             alumno.FUM = DateTime.Now;
-            if (string.IsNullOrEmpty(alumno.Usuario))
+
+            try
             {
-                alumno.Usuario = "Sistema";
+                _context.Alumnos.Add(alumno);
+                await _context.SaveChangesAsync(); // <-- Aquí es donde la BD puede gritar "¡Error!"
             }
-            _context.Alumnos.Add(alumno);
-            await _context.SaveChangesAsync();
+            catch (DbUpdateException) // <-- Atrapamos el grito de la BD
+            {
+                // Si falla, verificamos si es por la CURP duplicada
+                if (AlumnoExists(alumno.Id))
+                {
+                    return Conflict();
+                }
+                else
+                {
+                    // Mensaje personalizado para el usuario
+                    return BadRequest("Error: Ya existe un alumno con esa CURP en esta escuela.");
+                }
+            }
 
             return CreatedAtAction("GetAlumno", new { id = alumno.Id }, alumno);
         }
 
         // DELETE: api/Alumnos/5
         [HttpDelete("{id}")]
-        public async Task<IActionResult> DeleteAlumno(int id)
+        public async Task<IActionResult> DeleteAlumno(Guid id)
         {
             var alumno = await _context.Alumnos.FindAsync(id);
             if (alumno == null)
@@ -102,7 +117,7 @@ namespace Gremelik.API.Controllers
             return NoContent();
         }
 
-        private bool AlumnoExists(int id)
+        private bool AlumnoExists(Guid id)
         {
             return _context.Alumnos.Any(e => e.Id == id);
         }

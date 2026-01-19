@@ -1,24 +1,31 @@
-
+using Gremelik.core.Entities;
 using System;
-using System.ComponentModel.DataAnnotations;
 
 namespace Gremelik.core.Entities
 {
+    public enum EstatusAlumno
+    {
+        Activo = 1,
+        Baja = 2,
+        Egresado = 3
+    }
+
     public class Alumno : BaseEntity
     {
-        [StringLength(50)]
         public string Nombre { get; set; }
-        [StringLength(50)]
         public string PrimerApellido { get; set; }
-        [StringLength(50)]
         public string SegundoApellido { get; set; }
-        [StringLength(20)]
         public string Matricula { get; set; }
-        [StringLength(18)]
-        public string CURP { get; set; }
-        [StringLength(10)]
+        public string CURP { get; set; } // <--- Esta es la que te faltaba
         public string NIA { get; set; }
         public DateTime FechaNacimiento { get; set; }
-        public Guid EscuelaId { get; set; }
+
+        // Relación con Escuela
+        public Guid EscuelaId { get; set; } // <--- Esta también faltaba
+        // Opcional: Propiedad de navegación si la usas
+        // public Escuela Escuela { get; set; } 
+
+        // Nuevo campo de Estatus
+        public EstatusAlumno Estatus { get; set; } = EstatusAlumno.Activo;
     }
 }

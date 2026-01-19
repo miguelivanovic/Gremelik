@@ -29,7 +29,7 @@ namespace Gremelik.API.Controllers
 
         // GET: api/Tutores/5
         [HttpGet("{id}")]
-        public async Task<ActionResult<Tutor>> GetTutor(int id)
+        public async Task<ActionResult<Tutor>> GetTutor(Guid id)
         {
             var tutor = await _context.Tutores.FindAsync(id);
 
@@ -43,7 +43,7 @@ namespace Gremelik.API.Controllers
 
         // PUT: api/Tutores/5
         [HttpPut("{id}")]
-        public async Task<IActionResult> PutTutor(int id, Tutor tutor)
+        public async Task<IActionResult> PutTutor(Guid id, Tutor tutor)
         {
             if (id != tutor.Id)
             {
@@ -88,7 +88,7 @@ namespace Gremelik.API.Controllers
 
         // DELETE: api/Tutores/5
         [HttpDelete("{id}")]
-        public async Task<IActionResult> DeleteTutor(int id)
+        public async Task<IActionResult> DeleteTutor(Guid id)
         {
             var tutor = await _context.Tutores.FindAsync(id);
             if (tutor == null)
@@ -102,7 +102,7 @@ namespace Gremelik.API.Controllers
             return NoContent();
         }
 
-        private bool TutorExists(int id)
+        private bool TutorExists(Guid id)
         {
             return _context.Tutores.Any(e => e.Id == id);
         }
