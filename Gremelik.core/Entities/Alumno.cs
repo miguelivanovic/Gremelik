@@ -12,17 +12,17 @@ namespace Gremelik.core.Entities
 
     public class Alumno : BaseEntity
     {
-        public string Nombre { get; set; }
-        public string PrimerApellido { get; set; }
-        public string SegundoApellido { get; set; }
-        public string Matricula { get; set; }
-        public string CURP { get; set; } // <--- Esta es la que te faltaba
-        public string NIA { get; set; }
+        public required string Nombre { get; set; }
+        public required string PrimerApellido { get; set; }
+        public string? SegundoApellido { get; set; }
+        public required string Matricula { get; set; }
+        public required string CURP { get; set; } 
+        public required string NIA { get; set; }
         public DateTime FechaNacimiento { get; set; }
 
-        // Relación con Escuela
-        public Guid EscuelaId { get; set; } // <--- Esta también faltaba
-        // Opcional: Propiedad de navegación si la usas
+        // RelaciÃ³n con Escuela
+        public Guid EscuelaId { get; set; }
+        // Opcional: Propiedad de navegaciÃ³n si la usas
         // public Escuela Escuela { get; set; } 
 
         // Nuevo campo de Estatus

@@ -9,6 +9,6 @@ namespace Gremelik.core.Entities
         public Guid AlumnoId { get; set; }
         public Guid TutorId { get; set; }
         [StringLength(50)]
-        public string Parentesco { get; set; }
+        public required string Parentesco { get; set; }
     }
 }

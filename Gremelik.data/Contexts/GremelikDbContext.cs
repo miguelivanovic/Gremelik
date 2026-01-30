@@ -7,17 +7,13 @@ using System.Threading.Tasks;
 
 namespace Gremelik.data.Contexts
 {
-    public class GremelikDbContext : DbContext
+    public class GremelikDbContext(DbContextOptions<GremelikDbContext> options) : DbContext(options)
     {
-        public GremelikDbContext(DbContextOptions<GremelikDbContext> options) : base(options)
-        {
-        }
-
-        public DbSet<Escuela> Escuelas { get; set; }
-        public DbSet<Alumno> Alumnos { get; set; }
-        public DbSet<Tutor> Tutores { get; set; }
-        public DbSet<FichaMedica> FichasMedicas { get; set; }
-        public DbSet<RelacionAlumnoTutor> RelacionAlumnoTutor { get; set; }
+        public DbSet<Escuela> Escuelas { get; set; } = null!;
+        public DbSet<Alumno> Alumnos { get; set; } = null!;
+        public DbSet<Tutor> Tutores { get; set; } = null!;
+        public DbSet<FichaMedica> FichasMedicas { get; set; } = null!;
+        public DbSet<RelacionAlumnoTutor> RelacionAlumnoTutor { get; set; } = null!;
 
         public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
         {
@@ -46,7 +42,7 @@ namespace Gremelik.data.Contexts
                 .HasIndex(a => new { a.CURP, a.EscuelaId })
                 .IsUnique();
 
-            // Configuración de la relación Alumno-Tutor (Llave compuesta)
+            // ConfiguraciÃ³n de la relaciÃ³n Alumno-Tutor (Llave compuesta)
             modelBuilder.Entity<RelacionAlumnoTutor>()
                 .HasKey(rat => new { rat.AlumnoId, rat.TutorId });
         }

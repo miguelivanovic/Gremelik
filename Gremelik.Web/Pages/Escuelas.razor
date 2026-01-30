@@ -1,0 +1,71 @@
+@page "/escuelas"
+@using Gremelik.core.Entities
+@inject HttpClient Http
+
+<h3>Escuelas</h3>
+
+@if (escuelas == null)
+{
+    <p><em>Cargando...</em></p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Nombre</th>
+                <th>Razón Social</th>
+                <th>CCT</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var escuela in escuelas)
+            {
+                <tr>
+                    <td>@escuela.Nombre</td>
+                    <td>@escuela.RazonSocial</td>
+                    <td>@escuela.CCT</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<hr />
+
+<h4>Agregar Nueva Escuela</h4>
+<div class="form-group">
+    <label for="nombre">Nombre:</label>
+    <input type="text" class="form-control" @bind="nuevaEscuela.Nombre" />
+</div>
+<div class="form-group">
+    <label for="razonSocial">Razón Social:</label>
+    <input type="text" class="form-control" @bind="nuevaEscuela.RazonSocial" />
+</div>
+<div class="form-group">
+    <label for="cct">CCT:</label>
+    <input type="text" class="form-control" @bind="nuevaEscuela.CCT" />
+</div>
+<button class="btn btn-primary" @onclick="AgregarEscuela">Agregar</button>
+
+@code {
+    private Escuela[]? escuelas;
+    private Escuela nuevaEscuela = new() { Nombre = string.Empty, RazonSocial = string.Empty, CCT = string.Empty, Usuario = "Admin" };
+
+    protected override async Task OnInitializedAsync()
+    {
+        escuelas = await Http.GetFromJsonAsync<Escuela[]>("api/Escuelas");
+    }
+
+    private async Task AgregarEscuela()
+    {
+        if (!string.IsNullOrWhiteSpace(nuevaEscuela.Nombre) &&
+            !string.IsNullOrWhiteSpace(nuevaEscuela.RazonSocial) &&
+            !string.IsNullOrWhiteSpace(nuevaEscuela.CCT))
+        {
+            await Http.PostAsJsonAsync("api/Escuelas", nuevaEscuela);
+            nuevaEscuela = new() { Nombre = string.Empty, RazonSocial = string.Empty, CCT = string.Empty, Usuario = "Admin" };
+            escuelas = await Http.GetFromJsonAsync<Escuela[]>("api/Escuelas");
+        }
+    }
+}
