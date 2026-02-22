@@ -1,4 +1,8 @@
 ﻿@inherits LayoutComponentBase
+@using Microsoft.AspNetCore.Components.Authorization
+@inject Gremelik.Web.Services.AuthService AuthService
+@inject NavigationManager NavManager
+
 <div class="page">
     <div class="sidebar">
         <NavMenu />
@@ -6,7 +10,19 @@
 
     <main>
         <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
+            <AuthorizeView>
+                <Authorized>
+                    <span class="me-3 fw-bold">Hola, @context.User.Identity?.Name</span>
+                    <button class="btn btn-sm btn-outline-danger" @onclick="CerrarSesion">
+                        <i class="bi bi-box-arrow-right"></i> Salir
+                    </button>
+                </Authorized>
+                <NotAuthorized>
+                    <a href="login" class="btn btn-sm btn-primary text-white">Iniciar Sesión</a>
+                </NotAuthorized>
+            </AuthorizeView>
+
+            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank" class="ms-3">About</a>
         </div>
 
         <article class="content px-4">
@@ -14,3 +30,11 @@
         </article>
     </main>
 </div>
+
+@code {
+    private async Task CerrarSesion()
+    {
+        await AuthService.Logout();
+        NavManager.NavigateTo("/login");
+    }
+}

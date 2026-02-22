@@ -1,0 +1,174 @@
+﻿@page "/usuarios"
+@using Gremelik.core.DTOs
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin")]
+@inject HttpClient Http
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h3>Personal de la Escuela</h3>
+    <button class="btn btn-primary" @onclick="AbrirModal">
+        <i class="bi bi-person-plus-fill"></i> Nuevo Usuario
+    </button>
+</div>
+
+@if (mensaje != null)
+{
+    <div class="alert alert-info alert-dismissible fade show">
+        @mensaje
+        <button type="button" class="btn-close" @onclick="() => mensaje = null"></button>
+    </div>
+}
+
+@if (usuarios == null)
+{
+    <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Cargando...</span>
+    </div>
+}
+else if (!usuarios.Any())
+{
+    <div class="alert alert-warning">No hay usuarios registrados aparte de ti.</div>
+}
+else
+{
+    <table class="table table-hover">
+        <thead class="table-light">
+            <tr>
+                <th>Nombre</th>
+                <th>Email</th>
+                <th>Rol</th>
+                <th>Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var u in usuarios)
+            {
+                <tr>
+                    <td>@u.NombreCompleto</td>
+                    <td>@u.Email</td>
+                    <td><span class="badge bg-secondary">@u.Rol</span></td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-danger">Baja</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@if (mostrarFormulario)
+{
+    <div class="card mt-4 border-primary shadow">
+        <div class="card-header bg-primary text-white d-flex justify-content-between">
+            <span>Registrar Nuevo Colaborador</span>
+            <button class="btn-close btn-close-white" @onclick="() => mostrarFormulario = false"></button>
+        </div>
+        <div class="card-body">
+            <EditForm Model="@nuevoUsuario" OnSubmit="GuardarUsuario">
+                <DataAnnotationsValidator />
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label>Nombre Completo:</label>
+                        <InputText class="form-control" @bind-Value="nuevoUsuario.NombreCompleto" />
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label>Email (Usuario):</label>
+                        <InputText class="form-control" @bind-Value="nuevoUsuario.Email" />
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label>Contraseña:</label>
+                        <InputText type="password" class="form-control" @bind-Value="nuevoUsuario.Password" />
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label>Rol:</label>
+                        <InputSelect class="form-select" @bind-Value="nuevoUsuario.Rol">
+                            <option value="User">Maestro / Staff</option>
+                            <option value="SchoolAdmin">Co-Director</option>
+                        </InputSelect>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-end gap-2">
+                    <button type="button" class="btn btn-secondary" @onclick="() => mostrarFormulario = false">Cancelar</button>
+                    <button type="submit" class="btn btn-success">Crear Usuario</button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+}
+
+@code {
+    // Clase auxiliar para recibir datos
+    public class UsuarioSimple
+    {
+        public string Id { get; set; } = "";
+        public string NombreCompleto { get; set; } = "";
+        public string Email { get; set; } = "";
+        public string Rol { get; set; } = "";
+    }
+
+    private List<UsuarioSimple>? usuarios;
+    private RegisterDto nuevoUsuario = new() { Rol = "User" }; // Por defecto crea 'User'
+    private bool mostrarFormulario = false;
+    private string? mensaje;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarUsuarios();
+    }
+
+    private async Task CargarUsuarios()
+    {
+        try
+        {
+            usuarios = await Http.GetFromJsonAsync<List<UsuarioSimple>>("api/Usuarios");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Error: " + ex.Message);
+        }
+    }
+
+    private void AbrirModal()
+    {
+        nuevoUsuario = new() { Rol = "User", NombreEscuela = "", Subdominio = "" };
+        mostrarFormulario = true;
+        mensaje = null;
+    }
+
+    private async Task GuardarUsuario(EditContext context)
+    {
+        // Validacion manual simple si DataAnnotations falla
+        if (string.IsNullOrWhiteSpace(nuevoUsuario.Email) || string.IsNullOrWhiteSpace(nuevoUsuario.Password))
+        {
+            mensaje = "Email y contraseña son obligatorios.";
+            return;
+        }
+
+        try
+        {
+            var respuesta = await Http.PostAsJsonAsync("api/Usuarios", nuevoUsuario);
+
+            if (respuesta.IsSuccessStatusCode)
+            {
+                mensaje = "Usuario creado exitosamente.";
+                mostrarFormulario = false;
+                await CargarUsuarios();
+            }
+            else
+            {
+                var errorMsg = await respuesta.Content.ReadAsStringAsync();
+                mensaje = $"Error: {errorMsg}";
+            }
+        }
+        catch (Exception ex)
+        {
+            mensaje = $"Error de conexión: {ex.Message}";
+        }
+    }
+}

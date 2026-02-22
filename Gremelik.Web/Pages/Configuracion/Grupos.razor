@@ -1,0 +1,282 @@
+﻿@page "/configuracion/grupos"
+@using Gremelik.core.Entities
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin")]
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<div class="container-fluid">
+    <h3 class="mb-4">🪑 Apertura de Grupos (Salones)</h3>
+
+    <div class="card mb-4 shadow-sm border-0 bg-light">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label fw-bold text-secondary small">1. Plantel</label>
+                    <select class="form-select" @onchange="CargarNiveles">
+                        <option value="">-- Seleccionar --</option>
+                        @if (planteles != null)
+                        {
+                            @foreach (var p in planteles)
+                            {
+                                <option value="@p.Id">@p.Nombre</option>
+                            }
+                        }
+                    </select>
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label fw-bold text-secondary small">2. Nivel Educativo</label>
+                    <select class="form-select" @onchange="SeleccionarNivel" disabled="@(niveles == null || !niveles.Any())">
+                        <option value="">-- Seleccionar --</option>
+                        @if (niveles != null)
+                        {
+                            @foreach (var n in niveles)
+                            {
+                                <option value="@n.Id">@n.Nombre</option>
+                            }
+                        }
+                    </select>
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label fw-bold text-secondary small">3. Ciclo Escolar</label>
+                    <select class="form-select border-primary" @onchange="SeleccionarCiclo">
+                        <option value="">-- Seleccionar --</option>
+                        @if (ciclos != null)
+                        {
+                            @foreach (var c in ciclos)
+                            {
+                                <option value="@c.Id" selected="@c.Actual">@c.Nombre @(c.Actual ? "(Actual)" : "")</option>
+                            }
+                        }
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (nivelSeleccionadoId != Guid.Empty && cicloSeleccionadoId != 0)
+    {
+        @if (grados == null)
+        {
+            <div class="text-center mt-5"><div class="spinner-border text-primary"></div></div>
+        }
+        else if (!grados.Any())
+        {
+            <div class="alert alert-warning">No hay grados configurados en este nivel. Ve a "Oferta Educativa" primero.</div>
+        }
+        else
+        {
+            <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4">
+                @foreach (var grado in grados)
+                {
+                    <div class="col">
+                        <div class="card h-100 border-primary">
+                            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">@grado.Nombre</h5>
+                                <button class="btn btn-sm btn-light text-primary" @onclick="() => AbrirModalGrupo(grado.Id, grado.Nombre)">
+                                    <i class="bi bi-plus-lg"></i> Grupo
+                                </button>
+                            </div>
+                            <div class="card-body bg-light p-2">
+                                @if (diccionarioGrupos.ContainsKey(grado.Id))
+                                {
+                                    var gruposDelGrado = diccionarioGrupos[grado.Id];
+                                    if (!gruposDelGrado.Any())
+                                    {
+                                        <div class="text-center text-muted small p-2">Sin grupos abiertos</div>
+                                    }
+                                    else
+                                    {
+                                        <ul class="list-group list-group-flush">
+                                            @foreach (var grupo in gruposDelGrado)
+                                            {
+                                                <li class="list-group-item d-flex justify-content-between align-items-center bg-transparent px-2 py-1">
+                                                    <div>
+                                                        <span class="fw-bold fs-5 me-2">"@grupo.Nombre"</span>
+                                                        <span class="badge bg-secondary small">@grupo.Turno</span>
+                                                        <span class="text-muted small ms-2"><i class="bi bi-person"></i> @grupo.CupoMaximo</span>
+                                                    </div>
+                                                    <button class="btn btn-sm btn-outline-danger border-0" @onclick="() => EliminarGrupo(grupo.Id, grado.Id)">
+                                                        <i class="bi bi-trash"></i>
+                                                    </button>
+                                                </li>
+                                            }
+                                        </ul>
+                                    }
+                                }
+                                else
+                                {
+                                    <div class="text-center"><div class="spinner-grow spinner-grow-sm text-primary"></div></div>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    }
+    else
+    {
+        <div class="text-center text-muted mt-5 pt-5">
+            <i class="bi bi-funnel fs-1"></i>
+            <p class="mt-2">Selecciona un Plantel, Nivel y Ciclo para ver o abrir grupos.</p>
+        </div>
+    }
+</div>
+
+@if (mostrarModal)
+{
+    <div class="modal d-block" style="background: rgba(0,0,0,0.5)">
+        <div class="modal-dialog modal-sm">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Nuevo Grupo en @nombreGradoModal</h5>
+                    <button type="button" class="btn-close" @onclick="() => mostrarModal = false"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Nombre (Ej: A, B, Único)</label>
+                        <input class="form-control text-uppercase" @bind="nuevoGrupo.Nombre" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Turno</label>
+                        <select class="form-select" @bind="nuevoGrupo.Turno">
+                            <option value="Matutino">Matutino</option>
+                            <option value="Vespertino">Vespertino</option>
+                            <option value="Nocturno">Nocturno</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Cupo Máximo</label>
+                        <input type="number" class="form-control" @bind="nuevoGrupo.CupoMaximo" />
+                    </div>
+                    <button class="btn btn-primary w-100" @onclick="GuardarGrupo">Abrir Grupo</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    List<Plantel>? planteles;
+    List<CicloEscolar>? ciclos;
+    List<NivelEducativo>? niveles;
+    List<Grado>? grados;
+
+    // Diccionario para almacenar los grupos de cada grado: Key = GradoId, Value = Lista de Grupos
+    Dictionary<int, List<Grupo>> diccionarioGrupos = new();
+
+    Guid plantelSeleccionadoId = Guid.Empty;
+    Guid nivelSeleccionadoId = Guid.Empty;
+    int cicloSeleccionadoId = 0;
+
+    // Variables Modal
+    bool mostrarModal = false;
+    Grupo nuevoGrupo = new() { Usuario = "" }; // Le ponemos un usuario vacío para cumplir
+    string nombreGradoModal = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        planteles = await Http.GetFromJsonAsync<List<Plantel>>("api/Planteles");
+        ciclos = await Http.GetFromJsonAsync<List<CicloEscolar>>("api/Ciclos");
+
+        // Autoseleccionar ciclo activo por defecto
+        var cicloActivo = ciclos?.FirstOrDefault(c => c.Actual);
+        if (cicloActivo != null) cicloSeleccionadoId = cicloActivo.Id;
+    }
+
+    private async Task CargarNiveles(ChangeEventArgs e)
+    {
+        nivelSeleccionadoId = Guid.Empty;
+        grados = null;
+
+        if (Guid.TryParse(e.Value?.ToString(), out Guid id))
+        {
+            plantelSeleccionadoId = id;
+            niveles = await Http.GetFromJsonAsync<List<NivelEducativo>>($"api/Niveles/plantel/{id}");
+        }
+    }
+
+    private async Task SeleccionarNivel(ChangeEventArgs e)
+    {
+        if (Guid.TryParse(e.Value?.ToString(), out Guid id))
+        {
+            nivelSeleccionadoId = id;
+            await CargarGradosYGrupos();
+        }
+    }
+
+    private async Task SeleccionarCiclo(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int id))
+        {
+            cicloSeleccionadoId = id;
+            if (nivelSeleccionadoId != Guid.Empty) await CargarGradosYGrupos();
+        }
+    }
+
+    private async Task CargarGradosYGrupos()
+    {
+        // 1. Traer los grados del nivel
+        grados = await Http.GetFromJsonAsync<List<Grado>>($"api/Grados/nivel/{nivelSeleccionadoId}");
+        diccionarioGrupos.Clear();
+
+        // 2. Traer los grupos de CADA grado para el ciclo seleccionado
+        if (grados != null)
+        {
+            foreach (var g in grados)
+            {
+                var gruposDelGrado = await Http.GetFromJsonAsync<List<Grupo>>($"api/Grupos/grado/{g.Id}/ciclo/{cicloSeleccionadoId}");
+                diccionarioGrupos[g.Id] = gruposDelGrado ?? new List<Grupo>();
+            }
+        }
+    }
+
+    private void AbrirModalGrupo(int gradoId, string nombreGrado)
+    {
+        nombreGradoModal = nombreGrado;
+        nuevoGrupo = new Grupo
+            {
+                GradoId = gradoId,
+                CicloEscolarId = cicloSeleccionadoId,
+                Turno = "Matutino",
+                CupoMaximo = 40,
+                Usuario = "" // <--- AGREGADO: Obligatorio para compilar
+            };
+        mostrarModal = true;
+    }
+
+    private async Task GuardarGrupo()
+    {
+        if (string.IsNullOrWhiteSpace(nuevoGrupo.Nombre)) return;
+        nuevoGrupo.Nombre = nuevoGrupo.Nombre.ToUpper().Trim();
+
+        var res = await Http.PostAsJsonAsync("api/Grupos", nuevoGrupo);
+        if (res.IsSuccessStatusCode)
+        {
+            mostrarModal = false;
+            // Recargar SÓLO los grupos de ese grado para no hacer parpadear toda la pantalla
+            var gruposActualizados = await Http.GetFromJsonAsync<List<Grupo>>($"api/Grupos/grado/{nuevoGrupo.GradoId}/ciclo/{cicloSeleccionadoId}");
+            diccionarioGrupos[nuevoGrupo.GradoId] = gruposActualizados ?? new List<Grupo>();
+        }
+        else
+        {
+            var err = await res.Content.ReadAsStringAsync();
+            await JS.InvokeVoidAsync("alert", $"Error: {err}");
+        }
+    }
+
+    private async Task EliminarGrupo(int grupoId, int gradoId)
+    {
+        if (await JS.InvokeAsync<bool>("confirm", "¿Borrar este grupo?"))
+        {
+            await Http.DeleteAsync($"api/Grupos/{grupoId}");
+
+            // Recargar SÓLO los grupos de ese grado
+            var gruposActualizados = await Http.GetFromJsonAsync<List<Grupo>>($"api/Grupos/grado/{gradoId}/ciclo/{cicloSeleccionadoId}");
+            diccionarioGrupos[gradoId] = gruposActualizados ?? new List<Grupo>();
+        }
+    }
+}

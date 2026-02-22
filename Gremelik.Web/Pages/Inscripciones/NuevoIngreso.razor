@@ -1,0 +1,420 @@
+﻿@page "/inscripciones/nuevo-ingreso"
+@using Gremelik.core.Entities
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin")]
+@inject HttpClient Http
+@inject IJSRuntime JS
+@inject NavigationManager NavManager
+
+<div class="container-fluid pb-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3>🎓 Nueva Inscripción / Pre-inscripción</h3>
+    </div>
+
+    @if (enviando)
+    {
+        <div class="alert alert-info text-center">
+            <div class="spinner-border spinner-border-sm me-2"></div> Procesando...
+        </div>
+    }
+
+    <EditForm Model="@alumnoModel" OnValidSubmit="GuardarInscripcion">
+        <DataAnnotationsValidator />
+
+        <div class="row">
+            <div class="col-lg-8">
+                <div class="card mb-4 shadow-sm">
+                    <div class="card-header bg-primary text-white">
+                        <i class="bi bi-person-circle"></i> Datos del Alumno
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label>Nombre *</label>
+                                <InputText class="form-control" @bind-Value="alumnoModel.Nombre" />
+                                <ValidationMessage For="@(() => alumnoModel.Nombre)" />
+                            </div>
+                            <div class="col-md-4">
+                                <label>Primer Apellido *</label>
+                                <InputText class="form-control" @bind-Value="alumnoModel.PrimerApellido" />
+                                <ValidationMessage For="@(() => alumnoModel.PrimerApellido)" />
+                            </div>
+                            <div class="col-md-4">
+                                <label>Segundo Apellido</label>
+                                <InputText class="form-control" @bind-Value="alumnoModel.SegundoApellido" />
+                            </div>
+                            <div class="col-md-4">
+                                <label>CURP *</label>
+                                <InputText class="form-control" @bind-Value="alumnoModel.CURP" maxlength="18" style="text-transform:uppercase" />
+                                <ValidationMessage For="@(() => alumnoModel.CURP)" />
+                            </div>
+                            <div class="col-md-4">
+                                <label>NIA (Opcional)</label>
+                                <InputText class="form-control" @bind-Value="alumnoModel.NIA" />
+                            </div>
+                            <div class="col-md-4">
+                                <label>Fecha Nacimiento</label>
+                                <InputDate class="form-control" @bind-Value="alumnoModel.FechaNacimiento" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mb-4 shadow-sm">
+                    <div class="card-header bg-secondary text-white">
+                        <i class="bi bi-diagram-3"></i> Asignación Académica
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-md-12 mb-2">
+                                <label class="fw-bold">Ciclo Escolar a Inscribir:</label>
+                                <select class="form-select border-primary" value="@cicloSeleccionadoId" @onchange="CambiarCiclo">
+                                    <option value="0">-- Cargando --</option>
+                                    @if (ciclos != null)
+                                    {
+                                        @foreach (var c in ciclos)
+                                        {
+                                            <option value="@c.Id">@c.Nombre @(c.Actual ? "(ACTUAL)" : "")</option>
+                                        }
+                                    }
+                                </select>
+                            </div>
+
+                            <div class="col-md-4">
+                                <label>Plantel</label>
+                                <select class="form-select" @onchange="CargarNiveles">
+                                    <option value="">-- Seleccionar --</option>
+                                    @if (planteles != null)
+                                    {
+                                        @foreach (var p in planteles)
+                                        {
+                                            <option value="@p.Id">@p.Nombre</option>
+                                        }
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label>Nivel</label>
+                                <select class="form-select" @onchange="CargarGrados" disabled="@(niveles == null)">
+                                    <option value="">-- Seleccionar --</option>
+                                    @if (niveles != null)
+                                    {
+                                        @foreach (var n in niveles)
+                                        {
+                                            <option value="@n.Id">@n.Nombre</option>
+                                        }
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label>Grado</label>
+                                <select class="form-select" @onchange="CargarGruposYCotizar" disabled="@(grados == null)">
+                                    <option value="">-- Seleccionar --</option>
+                                    @if (grados != null)
+                                    {
+                                        @foreach (var g in grados)
+                                        {
+                                            <option value="@g.Id">@g.Nombre</option>
+                                        }
+                                    }
+                                </select>
+                            </div>
+
+                            <div class="col-md-12">
+                                <label class="fw-bold">Grupo:</label>
+                                @if (esCicloFuturo)
+                                {
+                                    <div class="alert alert-warning py-2">
+                                        <i class="bi bi-info-circle"></i> Estás pre-inscribiendo a un ciclo futuro.
+                                        La asignación de grupo es <strong>opcional</strong>.
+                                    </div>
+                                }
+
+                                @if (grupos != null && grupos.Any())
+                                {
+                                    <div class="d-flex gap-2 flex-wrap">
+                                        @foreach (var g in grupos)
+                                        {
+                                            <button type="button"
+                                                    class="btn @(grupoSeleccionadoId == g.Id ? "btn-primary" : "btn-outline-secondary")"
+                                                    @onclick="() => SeleccionarGrupo(g.Id)">
+                                                @g.Nombre <small>(@g.Turno)</small>
+                                            </button>
+                                        }
+                                    </div>
+                                }
+                                else if (gradoSeleccionadoId != 0 && !esCicloFuturo)
+                                {
+                                    <span class="text-danger ms-2">No hay grupos abiertos en este grado para el ciclo actual.</span>
+                                }
+                                else if (gradoSeleccionadoId != 0 && esCicloFuturo)
+                                {
+                                    <span class="text-muted ms-2">Aún no hay grupos creados para el futuro. Se inscribirá sin grupo.</span>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-4">
+                <div class="card shadow border-success h-100">
+                    <div class="card-header bg-success text-white">
+                        <i class="bi bi-cash-coin"></i> Caja / Cobro
+                    </div>
+                    <div class="card-body bg-light">
+                        @if (cargandoCotizacion)
+                        {
+                            <div class="text-center p-3"><div class="spinner-border text-success"></div></div>
+                        }
+                        else
+                        {
+                            <div class="mb-3">
+                                <label class="text-muted small">Costo Base:</label>
+                                <div class="input-group">
+                                    <span class="input-group-text">$</span>
+                                    <input type="number" class="form-control fw-bold" @bind="cotizacion.MontoBase" @bind:after="RecalcularManual" />
+                                </div>
+                                <small class="text-muted">@cotizacion.Concepto</small>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="text-muted small">Descuento:</label>
+                                <div class="input-group">
+                                    <span class="input-group-text text-danger">-$</span>
+                                    <input type="number" class="form-control text-danger" @bind="cotizacion.MontoDescuento" readonly />
+                                </div>
+                                @if (!string.IsNullOrEmpty(cotizacion.NombreReglaAplicada))
+                                {
+                                    <span class="badge bg-info text-dark">@cotizacion.NombreReglaAplicada</span>
+                                }
+                            </div>
+
+                            <hr />
+
+                            <div class="mb-3">
+                                <label class="fw-bold">TOTAL A PAGAR:</label>
+                                <h2 class="text-success text-end">$@cotizacion.MontoFinal.ToString("N2")</h2>
+                            </div>
+
+                            <button type="submit" class="btn btn-success w-100 py-3 fw-bold"
+                                    disabled="@(!PuedeGuardar)">
+                                <i class="bi bi-check-circle-fill"></i> CONFIRMAR INSCRIPCIÓN
+                            </button>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </EditForm>
+</div>
+
+@code {
+    private Alumno alumnoModel = new()
+        {
+            Nombre = "",
+            PrimerApellido = "",
+            Matricula = "PENDIENTE",
+            CURP = "",
+            NIA = "",
+            Usuario = ""
+        };
+
+    public class CotizacionDto
+    {
+        public decimal MontoBase { get; set; }
+        public decimal MontoDescuento { get; set; }
+        public decimal MontoFinal { get; set; }
+        public string Concepto { get; set; } = "";
+        public string? NombreReglaAplicada { get; set; }
+        public Guid? ReglaId { get; set; }
+    }
+
+    private CotizacionDto cotizacion = new();
+
+    List<Plantel>? planteles;
+    List<NivelEducativo>? niveles;
+    List<Grado>? grados;
+    List<Grupo>? grupos;
+    List<CicloEscolar>? ciclos;
+
+    int cicloSeleccionadoId = 0;
+    int cicloActivoId = 0;
+    int gradoSeleccionadoId = 0;
+    int grupoSeleccionadoId = 0; // Puede ser 0 si es pre-inscripción
+
+    bool enviando = false;
+    bool cargandoCotizacion = false;
+    bool esCicloFuturo = false;
+
+    // Propiedad para habilitar/deshabilitar botón
+    bool PuedeGuardar =>
+        gradoSeleccionadoId != 0 && // Debe haber seleccionado grado
+        (grupoSeleccionadoId != 0 || esCicloFuturo); // Debe tener grupo O ser futuro
+
+    public class EnvioInscripcion
+    {
+        public Alumno? Alumno { get; set; }
+        public int? GrupoId { get; set; } // Nullable
+        public int GradoId { get; set; }  // Nuevo
+        public int CicloId { get; set; }
+        public decimal MontoBase { get; set; }
+        public decimal MontoDescuento { get; set; }
+        public decimal MontoFinal { get; set; }
+        public Guid? ReglaId { get; set; }
+        public string? MotivoDescuentoManual { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        planteles = await Http.GetFromJsonAsync<List<Plantel>>("api/Planteles");
+
+        var todosCiclos = await Http.GetFromJsonAsync<List<CicloEscolar>>("api/Ciclos");
+
+        // FILTRO DE ORO: Actual o Próximo
+        if (todosCiclos != null)
+        {
+            ciclos = todosCiclos
+                .Where(c => c.Estatus == EstatusCiclo.Actual || c.Estatus == EstatusCiclo.Proximo)
+                .OrderBy(c => c.Estatus) // Primero Actual, luego Próximo
+                .ToList();
+
+            var activo = ciclos.FirstOrDefault(c => c.Estatus == EstatusCiclo.Actual);
+            if (activo != null)
+            {
+                cicloActivoId = activo.Id;
+                cicloSeleccionadoId = activo.Id; // Por defecto el actual
+            }
+        }
+    }
+
+    private async Task CambiarCiclo(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int id))
+        {
+            cicloSeleccionadoId = id;
+
+            // Lógica de ciclo futuro
+            esCicloFuturo = (cicloSeleccionadoId != cicloActivoId);
+
+            // Limpiamos la cotización anterior para que no muestre datos viejos
+            cotizacion = new();
+
+            // Si ya había un grado seleccionado, intentamos recargar grupos y precio
+            if (gradoSeleccionadoId != 0)
+            {
+                await CargarGrupos(); // Esperamos a que cargue grupos
+                await Cotizar(gradoSeleccionadoId); // Esperamos a que cotice
+            }
+        }
+    }
+
+    private async Task CargarNiveles(ChangeEventArgs e)
+    {
+        if (Guid.TryParse(e.Value?.ToString(), out Guid id))
+            niveles = await Http.GetFromJsonAsync<List<NivelEducativo>>($"api/Niveles/plantel/{id}");
+        grados = null; grupos = null;
+    }
+
+    private async Task CargarGrados(ChangeEventArgs e)
+    {
+        if (Guid.TryParse(e.Value?.ToString(), out Guid id))
+            grados = await Http.GetFromJsonAsync<List<Grado>>($"api/Grados/nivel/{id}");
+        grupos = null;
+    }
+
+    private async Task CargarGruposYCotizar(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int id))
+        {
+            gradoSeleccionadoId = id;
+            await CargarGrupos(); // Carga grupos del ciclo seleccionado
+            await Cotizar(id);    // Cotiza para el ciclo seleccionado
+        }
+    }
+
+    private async Task CargarGrupos()
+    {
+        // Buscamos grupos en el ciclo SELECCIONADO (no solo el activo)
+        grupos = await Http.GetFromJsonAsync<List<Grupo>>($"api/Grupos/grado/{gradoSeleccionadoId}/ciclo/{cicloSeleccionadoId}");
+        grupoSeleccionadoId = 0; // Reiniciar selección
+    }
+
+    private void SeleccionarGrupo(int id)
+    {
+        grupoSeleccionadoId = id;
+    }
+
+    private async Task Cotizar(int gradoId)
+    {
+        // 1. Encendemos el spinner
+        cargandoCotizacion = true;
+
+        try
+        {
+            // Validamos que tengamos datos mínimos
+            if (cicloSeleccionadoId == 0 || gradoId == 0)
+            {
+                cotizacion = new();
+                return; // El finally se ejecutará y apagará el spinner
+            }
+
+            // 2. Llamada al API
+            var url = $"api/Inscripciones/cotizar?cicloId={cicloSeleccionadoId}&gradoId={gradoId}&esNuevoIngreso=true";
+            cotizacion = await Http.GetFromJsonAsync<CotizacionDto>(url) ?? new();
+        }
+        catch (Exception ex)
+        {
+            // Si falla, mostramos precio en 0 y el error en consola o concepto
+            cotizacion = new()
+                {
+                    MontoBase = 0,
+                    MontoFinal = 0,
+                    Concepto = "No se pudo obtener precio (Verifica configuración)"
+                };
+            Console.WriteLine("Error cotizando: " + ex.Message);
+        }
+        finally
+        {
+            // 3. APAGADO OBLIGATORIO DEL SPINNER
+            // Esto garantiza que la caja nunca se quede "pensando"
+            cargandoCotizacion = false;
+        }
+    }
+
+    private void RecalcularManual()
+    {
+        cotizacion.MontoFinal = cotizacion.MontoBase - cotizacion.MontoDescuento;
+        if (cotizacion.MontoFinal < 0) cotizacion.MontoFinal = 0;
+    }
+
+    private async Task GuardarInscripcion()
+    {
+        enviando = true;
+        var envio = new EnvioInscripcion
+            {
+                Alumno = alumnoModel,
+                GrupoId = grupoSeleccionadoId == 0 ? null : grupoSeleccionadoId, // Null si es 0
+                GradoId = gradoSeleccionadoId, // Necesario para pre-inscripción
+                CicloId = cicloSeleccionadoId,
+                MontoBase = cotizacion.MontoBase,
+                MontoDescuento = cotizacion.MontoDescuento,
+                MontoFinal = cotizacion.MontoFinal,
+                ReglaId = cotizacion.ReglaId
+            };
+
+        var res = await Http.PostAsJsonAsync("api/Inscripciones/nuevo-ingreso", envio);
+
+        if (res.IsSuccessStatusCode)
+        {
+            await JS.InvokeVoidAsync("alert", "¡Inscripción Exitosa!");
+            NavManager.NavigateTo("/");
+        }
+        else
+        {
+            var msg = await res.Content.ReadAsStringAsync();
+            await JS.InvokeVoidAsync("alert", "Error: " + msg);
+        }
+        enviando = false;
+    }
+}

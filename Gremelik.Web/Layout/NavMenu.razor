@@ -1,44 +1,178 @@
+@using Microsoft.AspNetCore.Components.Authorization
+@inject Gremelik.Web.Services.TenantService Tenant
+
 <div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
-        <a class="navbar-brand" href="">Gremelik.Web</a>
+        <a class="navbar-brand" href="">
+            @(Tenant.EsAdmin ? "Gremelik PANEL" : $"Escuela {Tenant.SubdominioActual?.ToUpper()}")
+        </a>
         <button title="Navigation menu" class="navbar-toggler" @onclick="ToggleNavMenu">
             <span class="navbar-toggler-icon"></span>
         </button>
     </div>
 </div>
 
-<div class="@NavMenuCssClass nav-scrollable" @onclick="ToggleNavMenu">
+<div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
     <nav class="flex-column">
+
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Home
+                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Inicio
             </NavLink>
         </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="counter">
-                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Counter
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="weather">
-                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Weather
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="escuelas">
-                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Escuelas
-            </NavLink>
-        </div>
+
+        <AuthorizeView Roles="GlobalAdmin">
+            <Authorized>
+                @if (Tenant.EsAdmin)
+                {
+                    <div class="nav-item px-3">
+                        <NavLink class="nav-link" href="escuelas">
+                            <span class="bi bi-building-fill-nav-menu" aria-hidden="true"></span> Gestión Escuelas
+                        </NavLink>
+                    </div>
+                }
+            </Authorized>
+        </AuthorizeView>
+
+        <AuthorizeView Roles="GlobalAdmin, SchoolAdmin">
+            <Authorized>
+                @if (!Tenant.EsAdmin)
+                {
+                    <div class="nav-item px-3">
+                        <NavLink class="nav-link" href="alumnos">
+                            <span class="bi bi-people-fill-nav-menu" aria-hidden="true"></span> Alumnos
+                        </NavLink>
+                    </div>
+
+                    <div class="nav-item px-3">
+                        <NavLink class="nav-link" href="alumnos/tutores">
+                            <span class="bi bi-people-fill-nav-menu" aria-hidden="true"></span> Padre/Tutor
+                        </NavLink>
+                    </div>
+
+                    <div class="nav-item px-3">
+                        <NavLink class="nav-link" href="usuarios">
+                            <span class="bi bi-person-badge-fill-nav-menu" aria-hidden="true"></span> Personal
+                        </NavLink>
+                    </div>
+
+                    <div class="nav-item px-3">
+                        <NavLink class="nav-link" href="configuracion/planteles">
+                            <span class="bi bi-building-gear-nav-menu" aria-hidden="true"></span> Planteles
+                        </NavLink>
+                    </div>
+
+                    <div class="nav-item px-3">
+                        <NavLink class="nav-link" href="configuracion/ciclos">
+                            <span class="bi bi-calendar-event-fill-nav-menu" aria-hidden="true"></span> Ciclos Escolares
+                        </NavLink>
+                    </div>
+
+                    <div class="nav-item px-3">
+                        <NavLink class="nav-link" href="configuracion/oferta">
+                            <span class="bi bi-diagram-3-fill-nav-menu" aria-hidden="true"></span> Oferta Educativa
+                        </NavLink>
+                    </div>
+
+                    <div class="nav-item px-3">
+                        <NavLink class="nav-link" href="configuracion/grupos">
+                            <span class="bi bi-grid-3x3-gap-fill-nav-menu" aria-hidden="true"></span> Apertura de Grupos
+                        </NavLink>
+                    </div>
+
+                    <div class="nav-item px-3">
+                        <NavLink class="nav-link" href="configuracion/costos">
+                            <span class="bi bi-tag-fill-nav-menu" aria-hidden="true"></span> Precios Inscripción
+                        </NavLink>
+                    </div>
+
+                    <div class="nav-item px-3">
+                        <NavLink class="nav-link" href="configuracion/reglas">
+                            <span class="bi bi-gift-fill-nav-menu" aria-hidden="true"></span> Promociones
+                        </NavLink>
+                    </div>
+
+                    <div class="nav-item px-3">
+                        <NavLink class="nav-link" href="inscripciones/nuevo-ingreso">
+                            <span class="bi bi-person-plus-fill-nav-menu" aria-hidden="true"></span> Nueva Inscripción
+                        </NavLink>
+                    </div>
+
+                    <div class="nav-item px-3">
+                        <NavLink class="nav-link" href="academico/grupos">
+                            <span class="bi bi-grid-3x3-gap-fill-nav-menu" aria-hidden="true"></span> Gestión Grupos
+                        </NavLink>
+                    </div>
+
+                    <div class="nav-item px-3">
+                        <NavLink class="nav-link" href="inscripciones/reinscripcion">
+                            <span class="bi bi-arrow-repeat-nav-menu" aria-hidden="true"></span> Reinscripción
+                        </NavLink>
+                    </div>
+
+                    <div class="nav-item px-3">
+                        <NavLink class="nav-link" href="academico/listas">
+                            <span class="bi bi-list-check-nav-menu" aria-hidden="true"></span> Listas de Grupo
+                        </NavLink>
+                    </div>
+
+                    <div class="nav-item px-3">
+                        <NavLink class="nav-link" href="academico/avance-reinscripcion">
+                            <span class="bi bi-bar-chart-fill-nav-menu" aria-hidden="true"></span> Avance Reinscripción
+                        </NavLink>
+                    </div>
+
+                    <div class="nav-item px-3">
+                        <NavLink class="nav-link" href="configuracion/finanzas">
+                            <span class="bi bi-cash-stack-nav-menu" aria-hidden="true"></span> Config. Financiera
+                        </NavLink>
+                    </div>
+
+                    <div class="nav-item px-3">
+                        <NavLink class="nav-link" href="configuracion/becas">
+                            <span class="bi bi-award-fill-nav-menu" aria-hidden="true"></span> Catálogo de Becas
+                        </NavLink>
+                    </div>
+
+                    <div class="nav-item px-3">
+                        <NavLink class="nav-link" href="finanzas/asignacion-cargos">
+                            <span class="bi bi-wallet2-nav-menu" aria-hidden="true"></span> Asignar Pagos
+                        </NavLink>
+                    </div>
+
+                    <div class="nav-item px-3">
+                        <NavLink class="nav-link" href="finanzas/caja">
+                            <span class="bi bi-cart-check-fill-nav-menu" aria-hidden="true"></span> Caja / Cobro
+                        </NavLink>
+                    </div>
+
+                    <div class="nav-item px-3">
+                        <NavLink class="nav-link" href="finanzas/corte-caja">
+                            <span class="bi bi-cart-check-fill-nav-menu" aria-hidden="true"></span> Corte Caja
+                        </NavLink>
+                    </div>
+
+                    <div class="nav-item px-3">
+                        <NavLink class="nav-link" href="finanzas/morosos">
+                            <span class="bi bi-cart-check-fill-nav-menu" aria-hidden="true"></span> Pendientes de Pago
+                        </NavLink>
+                    </div>
+
+                    <div class="nav-item px-3">
+                        <NavLink class="nav-link" href="finanzas/ingresos-concepto">
+                            <span class="bi bi-cart-check-fill-nav-menu" aria-hidden="true"></span> Ingresos Por Concepto
+                        </NavLink>
+                    </div>
+
+                }
+            </Authorized>
+        </AuthorizeView>
+
     </nav>
 </div>
 
 @code {
     private bool collapseNavMenu = true;
-
     private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
-
-    private void ToggleNavMenu()
-    {
-        collapseNavMenu = !collapseNavMenu;
-    }
+    private void ToggleNavMenu() => collapseNavMenu = !collapseNavMenu;
 }

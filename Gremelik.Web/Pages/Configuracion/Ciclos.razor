@@ -1,0 +1,185 @@
+﻿@page "/configuracion/ciclos"
+@using Gremelik.core.Entities
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin")]
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3>📅 Ciclos Escolares</h3>
+    <button class="btn btn-primary" @onclick="AbrirModal">
+        <i class="bi bi-calendar-plus"></i> Nuevo Ciclo
+    </button>
+</div>
+
+@if (ciclos == null)
+{
+    <div class="spinner-border text-primary"></div>
+}
+else
+{
+    <div class="row">
+        @foreach (var c in ciclos)
+        {
+            <div class="col-md-4 mb-3">
+                <div class="card shadow-sm h-100 border-top border-4 @ObtenerBorde(c.Estatus)">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h5 class="card-title mb-0">@c.Nombre</h5>
+                            <span class="badge @ObtenerBadge(c.Estatus)">@c.Estatus</span>
+                        </div>
+                        <p class="text-muted small mb-3">
+                            <i class="bi bi-calendar3"></i> @c.FechaInicio.ToString("MMM yyyy") - @c.FechaFin.ToString("MMM yyyy")
+                        </p>
+
+                        @if (c.Estatus == EstatusCiclo.Proximo)
+                        {
+                            <button class="btn btn-outline-success w-100 mb-2" @onclick="() => HacerActual(c)">
+                                <i class="bi bi-play-circle"></i> Iniciar Ciclo
+                            </button>
+                            <small class="text-muted d-block text-center" style="font-size:0.75rem">
+                                Al iniciar, el ciclo actual pasará a Finalizado.
+                            </small>
+                            <hr />
+                            <button class="btn btn-sm btn-outline-danger w-100" @onclick="() => Eliminar(c.Id)">
+                                <i class="bi bi-trash"></i> Eliminar
+                            </button>
+                        }
+                        else if (c.Estatus == EstatusCiclo.Actual)
+                        {
+                            <div class="alert alert-success py-2 text-center small mb-0">
+                                <i class="bi bi-check-circle-fill"></i> Ciclo en Curso
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="alert alert-secondary py-2 text-center small mb-0">
+                                <i class="bi bi-archive-fill"></i> Ciclo Finalizado
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@if (mostrarFormulario)
+{
+    <div class="modal d-block" style="background: rgba(0,0,0,0.5)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">Nuevo Ciclo (Será Próximo)</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="() => mostrarFormulario = false"></button>
+                </div>
+                <div class="modal-body">
+                    <EditForm Model="@nuevoCiclo" OnSubmit="GuardarCiclo">
+                        <div class="mb-3">
+                            <label>Nombre</label>
+                            <InputText class="form-control" @bind-Value="nuevoCiclo.Nombre" placeholder="Ej. 2026 - 2027" required />
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-6">
+                                <label>Inicio</label>
+                                <InputDate class="form-control" @bind-Value="nuevoCiclo.FechaInicio" />
+                            </div>
+                            <div class="col-6">
+                                <label>Fin</label>
+                                <InputDate class="form-control" @bind-Value="nuevoCiclo.FechaFin" />
+                            </div>
+                        </div>
+                        <div class="text-end">
+                            <button type="button" class="btn btn-secondary me-2" @onclick="() => mostrarFormulario = false">Cancelar</button>
+                            <button type="submit" class="btn btn-success">Guardar</button>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    List<CicloEscolar>? ciclos;
+    bool mostrarFormulario = false;
+
+    // Inicializamos con valores por defecto para evitar nulos
+    CicloEscolar nuevoCiclo = new()
+        {
+            Nombre = "",
+            Usuario = "" // <--- ESTO ARREGLA EL ERROR DE USUARIO REQUERIDO
+        };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Cargar();
+    }
+
+    async Task Cargar() => ciclos = await Http.GetFromJsonAsync<List<CicloEscolar>>("api/Ciclos");
+
+    // Estilos visuales
+    string ObtenerBorde(EstatusCiclo e) => e switch
+    {
+        EstatusCiclo.Actual => "border-success",
+        EstatusCiclo.Proximo => "border-primary",
+        _ => "border-secondary"
+    };
+
+    string ObtenerBadge(EstatusCiclo e) => e switch
+    {
+        EstatusCiclo.Actual => "bg-success",
+        EstatusCiclo.Proximo => "bg-primary",
+        _ => "bg-secondary"
+    };
+
+    void AbrirModal()
+    {
+        var hoy = DateTime.Today;
+        // Creamos objeto nuevo limpio
+        nuevoCiclo = new()
+            {
+                Nombre = $"{hoy.Year + 1} - {hoy.Year + 2}",
+                FechaInicio = new DateTime(hoy.Year + 1, 8, 1),
+                FechaFin = new DateTime(hoy.Year + 2, 7, 15),
+                Estatus = EstatusCiclo.Proximo,
+                Usuario = "", // Importante inicializarlo
+                Activo = true
+            };
+        mostrarFormulario = true;
+    }
+
+    async Task GuardarCiclo()
+    {
+        var res = await Http.PostAsJsonAsync("api/Ciclos", nuevoCiclo);
+        if (res.IsSuccessStatusCode)
+        {
+            mostrarFormulario = false;
+            await Cargar();
+        }
+    }
+
+    // Fíjate que el ID es int
+    async Task HacerActual(int id)
+    {
+        // Lógica de confirmación...
+        if (await JS.InvokeAsync<bool>("confirm", "¿Iniciar este ciclo?"))
+        {
+            var res = await Http.PutAsync($"api/Ciclos/activar/{id}", null);
+            if (res.IsSuccessStatusCode) await Cargar();
+        }
+    }
+
+    // Sobrecarga por si el HTML manda el objeto completo
+    async Task HacerActual(CicloEscolar c) => await HacerActual(c.Id);
+
+    async Task Eliminar(int id)
+    {
+        if (await JS.InvokeAsync<bool>("confirm", "¿Borrar este ciclo?"))
+        {
+            var res = await Http.DeleteAsync($"api/Ciclos/{id}");
+            if (res.IsSuccessStatusCode) await Cargar();
+            else await JS.InvokeVoidAsync("alert", "No se pudo borrar.");
+        }
+    }
+}

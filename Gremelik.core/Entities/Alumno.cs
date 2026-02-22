@@ -1,5 +1,6 @@
-using Gremelik.core.Entities;
 using System;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Gremelik.core.Entities
 {
@@ -12,20 +13,31 @@ namespace Gremelik.core.Entities
 
     public class Alumno : BaseEntity
     {
+        [Required]
         public required string Nombre { get; set; }
+
+        [Required]
         public required string PrimerApellido { get; set; }
+
         public string? SegundoApellido { get; set; }
+
+        [Required]
         public required string Matricula { get; set; }
-        public required string CURP { get; set; } 
+
+        [Required]
+        [StringLength(18)]
+        public required string CURP { get; set; }
+
         public required string NIA { get; set; }
+
         public DateTime FechaNacimiento { get; set; }
 
-        // Relación con Escuela
+        // --- CORRECCIÓN IMPORTANTE: USAMOS GUID ---
         public Guid EscuelaId { get; set; }
-        // Opcional: Propiedad de navegación si la usas
-        // public Escuela Escuela { get; set; } 
 
-        // Nuevo campo de Estatus
+        [ForeignKey("EscuelaId")]
+        public Escuela? Escuela { get; set; }
+
         public EstatusAlumno Estatus { get; set; } = EstatusAlumno.Activo;
     }
 }

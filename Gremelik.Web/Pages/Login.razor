@@ -1,0 +1,98 @@
+﻿@page "/login"
+@using Gremelik.core.DTOs
+@using Gremelik.Web.Services
+@inject AuthService AuthService
+@inject NavigationManager NavigationManager
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6 col-lg-4">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white text-center">
+                    <h3>Iniciar Sesión</h3>
+                </div>
+                <div class="card-body">
+                    <EditForm Model="@loginModel" OnSubmit="HandleLogin">
+                        <DataAnnotationsValidator />
+
+                        <div class="mb-3">
+                            <label>Email</label>
+                            <InputText class="form-control" @bind-Value="loginModel.Email" placeholder="usuario@escuela.com" />
+                            <ValidationMessage For="@(() => loginModel.Email)" />
+                        </div>
+
+                        <div class="mb-3">
+                            <label>Contraseña</label>
+                            <InputText type="password" class="form-control" @bind-Value="loginModel.Password" placeholder="******" />
+                            <ValidationMessage For="@(() => loginModel.Password)" />
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(errorMessage))
+                        {
+                            <div class="alert alert-danger text-center">
+                                @errorMessage
+                            </div>
+                        }
+
+                        <button type="submit" class="btn btn-primary w-100">Entrar</button>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private LoginDto loginModel = new();
+    private string? errorMessage;
+    private bool cargando = false;
+
+    private async Task HandleLogin(EditContext context) // <--- Agrega el parámetro context
+    {
+        // 1. EL CHISMOSO: Esto debe salir en la consola F12
+        Console.WriteLine("🔥 ¡BOTÓN PRESIONADO! INICIANDO PROCESO...");
+
+        cargando = true;
+        errorMessage = null;
+        
+        try 
+        {
+            // 2. Validamos nosotros mismos para ver si ese era el problema
+            if (!context.Validate())
+            {
+                Console.WriteLine("❌ EL FORMULARIO NO ES VÁLIDO");
+                foreach (var err in context.GetValidationMessages())
+                {
+                    Console.WriteLine($"   Error: {err}");
+                }
+                cargando = false;
+                return;
+            }
+
+            Console.WriteLine($"📧 Intentando entrar con: {loginModel.Email}");
+            
+            // 3. Llamada a la API
+            var error = await AuthService.Login(loginModel);
+
+            if (error == null)
+            {
+                Console.WriteLine("✅ LOGIN EXITOSO. REDIRIGIENDO...");
+                NavigationManager.NavigateTo("/", forceLoad: true); // forceLoad para asegurar que refresque el menú
+            }
+            else
+            {
+                Console.WriteLine($"⚠️ ERROR API: {error}");
+                errorMessage = error;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"💀 EXCEPCIÓN CRÍTICA: {ex.Message}");
+            errorMessage = $"Error del sistema: {ex.Message}";
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+    }

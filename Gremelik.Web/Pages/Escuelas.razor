@@ -1,71 +1,339 @@
 @page "/escuelas"
 @using Gremelik.core.Entities
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "GlobalAdmin")]
 @inject HttpClient Http
+@inject IJSRuntime JS
+@using System.Net.Http.Headers
 
-<h3>Escuelas</h3>
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h3>🏢 Gestión de Escuelas (Tenants)</h3>
+    <button class="btn btn-primary fw-bold" @onclick="AbrirModalNuevo">
+        <i class="bi bi-plus-circle"></i> Nueva Escuela
+    </button>
+</div>
+
+@if (mensajeError != null)
+{
+    <div class="alert alert-danger alert-dismissible fade show">
+        @mensajeError
+        <button type="button" class="btn-close" @onclick="() => mensajeError = null"></button>
+    </div>
+}
 
 @if (escuelas == null)
 {
-    <p><em>Cargando...</em></p>
+    <div class="d-flex justify-content-center py-5">
+        <div class="spinner-border text-primary" role="status"></div>
+    </div>
+}
+else if (!escuelas.Any(x => x.Activo))
+{
+    <div class="alert alert-warning">No hay escuelas activas registradas.</div>
 }
 else
 {
-    <table class="table">
-        <thead>
-            <tr>
-                <th>Nombre</th>
-                <th>Razón Social</th>
-                <th>CCT</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var escuela in escuelas)
-            {
+    <div class="table-responsive shadow-sm rounded">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-dark">
                 <tr>
-                    <td>@escuela.Nombre</td>
-                    <td>@escuela.RazonSocial</td>
-                    <td>@escuela.CCT</td>
+                    <th>Identidad</th>
+                    <th>Subdominio</th>
+                    <th>Colores</th>
+                    <th class="text-end">Acciones</th>
                 </tr>
-            }
-        </tbody>
-    </table>
+            </thead>
+            <tbody>
+                @foreach (var escuela in escuelas.Where(x => x.Activo))
+                {
+                    <tr>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                @if (!string.IsNullOrEmpty(escuela.LogoUrl))
+                                {
+                                    <img src="@escuela.LogoUrl" alt="Logo" class="rounded me-3" style="width: 40px; height: 40px; object-fit: cover;" />
+                                }
+                                else
+                                {
+                                    <div class="rounded me-3 bg-secondary d-flex justify-content-center align-items-center text-white" style="width: 40px; height: 40px;">
+                                        <i class="bi bi-building"></i>
+                                    </div>
+                                }
+                                <div>
+                                    <div class="fw-bold">@escuela.Nombre</div>
+                                    <small class="text-muted">@escuela.Slogan</small>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <a href="http://@(escuela.Subdominio).gremelik.local:7106" target="_blank" class="fw-bold text-decoration-none">
+                                @escuela.Subdominio <i class="bi bi-box-arrow-up-right small"></i>
+                            </a>
+                        </td>
+                        <td>
+                            <span class="badge rounded-pill border shadow-sm" style="background-color:@escuela.ColorPrimario; color: #fff;">Primario</span>
+                            <span class="badge rounded-pill border shadow-sm" style="background-color:@escuela.ColorSecundario; color: #fff;">Secundario</span>
+                        </td>
+                        <td class="text-end">
+                            <button class="btn btn-outline-primary btn-sm me-2" @onclick="() => AbrirModalEditar(escuela)">
+                                <i class="bi bi-pencil-fill"></i> Editar
+                            </button>
+                            <button class="btn btn-outline-danger btn-sm" @onclick="() => EliminarEscuela(escuela.Id)">
+                                <i class="bi bi-trash-fill"></i>
+                            </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
 }
 
-<hr />
+@if (mostrarFormulario)
+{
+    <div class="modal d-block" style="background: rgba(0,0,0,0.5)">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header @(editando ? "bg-primary" : "bg-success") text-white">
+                    <h5 class="modal-title">@(editando ? "Editar Escuela" : "Registrar Nueva Escuela")</h5>
+                    <button class="btn-close btn-close-white" @onclick="() => mostrarFormulario = false"></button>
+                </div>
+                <div class="modal-body">
+                    <EditForm Model="@escuelaActual" OnSubmit="GuardarEscuela">
+                        <DataAnnotationsValidator />
 
-<h4>Agregar Nueva Escuela</h4>
-<div class="form-group">
-    <label for="nombre">Nombre:</label>
-    <input type="text" class="form-control" @bind="nuevaEscuela.Nombre" />
-</div>
-<div class="form-group">
-    <label for="razonSocial">Razón Social:</label>
-    <input type="text" class="form-control" @bind="nuevaEscuela.RazonSocial" />
-</div>
-<div class="form-group">
-    <label for="cct">CCT:</label>
-    <input type="text" class="form-control" @bind="nuevaEscuela.CCT" />
-</div>
-<button class="btn btn-primary" @onclick="AgregarEscuela">Agregar</button>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="fw-bold">Nombre Comercial *</label>
+                                <InputText class="form-control" @bind-Value="escuelaActual.Nombre" placeholder="Ej. Instituto Gremelik" required />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="fw-bold">Subdominio *</label>
+                                <div class="input-group">
+                                    <InputText class="form-control text-lowercase" @bind-Value="escuelaActual.Subdominio" placeholder="ej. benito" required disabled="@editando" />
+                                    <span class="input-group-text bg-light">.gremelik.local</span>
+                                </div>
+                                @if (editando)
+                                {
+                                    <small class="text-danger">El subdominio no se puede cambiar.</small>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="fw-bold">Slogan</label>
+                                <InputText class="form-control" @bind-Value="escuelaActual.Slogan" />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="fw-bold">Sitio Web</label>
+                                <InputText class="form-control" @bind-Value="escuelaActual.SitioWeb" placeholder="www.tucolegio.com" />
+                            </div>
+                        </div>
+
+                        <hr />
+                        <h6 class="text-primary fw-bold"><i class="bi bi-palette-fill"></i> Personalización Visual</h6>
+
+                        <div class="row">
+                            <div class="col-md-3 mb-3">
+                                <label class="fw-bold">Color Primario</label>
+                                <input type="color" class="form-control form-control-color w-100" @bind="escuelaActual.ColorPrimario" />
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="fw-bold">Color Secundario</label>
+                                <input type="color" class="form-control form-control-color w-100" @bind="escuelaActual.ColorSecundario" />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="fw-bold">Logo (Cuadrado, PNG/JPG)</label>
+                                <InputFile OnChange="@(e => SubirImagen(e, "logo"))" class="form-control" accept="image/png, image/jpeg" />
+
+                                @if (!string.IsNullOrEmpty(escuelaActual.LogoUrl))
+                                {
+                                    <img src="@escuelaActual.LogoUrl" class="img-thumbnail mt-2" style="max-height: 80px;" />
+                                }
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="fw-bold">Fondo Login (1920x1080px)</label>
+                            <InputFile OnChange="@(e => SubirImagen(e, "fondo"))" class="form-control" accept="image/png, image/jpeg" />
+
+                            @if (!string.IsNullOrEmpty(escuelaActual.FondoLoginUrl))
+                            {
+                                <img src="@escuelaActual.FondoLoginUrl" class="img-thumbnail mt-2" style="max-height: 120px;" />
+                            }
+                        </div>
+
+                        <div class="d-flex justify-content-end gap-2 mt-4">
+                            <button type="button" class="btn btn-secondary" @onclick="() => mostrarFormulario = false">Cancelar</button>
+                            <button type="submit" class="btn @(editando ? "btn-primary" : "btn-success") px-4">
+                                @(editando ? "Guardar Cambios" : "Registrar Escuela")
+                            </button>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+}
 
 @code {
-    private Escuela[]? escuelas;
-    private Escuela nuevaEscuela = new() { Nombre = string.Empty, RazonSocial = string.Empty, CCT = string.Empty, Usuario = "Admin" };
+    private List<Escuela>? escuelas;
+    private Escuela escuelaActual = new() { Nombre = "", Subdominio = "", Usuario = "Admin" };
+    private bool mostrarFormulario = false;
+    private bool editando = false;
+    private string? mensajeError;
 
     protected override async Task OnInitializedAsync()
     {
-        escuelas = await Http.GetFromJsonAsync<Escuela[]>("api/Escuelas");
+        await CargarEscuelas();
     }
 
-    private async Task AgregarEscuela()
+    private async Task CargarEscuelas()
     {
-        if (!string.IsNullOrWhiteSpace(nuevaEscuela.Nombre) &&
-            !string.IsNullOrWhiteSpace(nuevaEscuela.RazonSocial) &&
-            !string.IsNullOrWhiteSpace(nuevaEscuela.CCT))
+        try
         {
-            await Http.PostAsJsonAsync("api/Escuelas", nuevaEscuela);
-            nuevaEscuela = new() { Nombre = string.Empty, RazonSocial = string.Empty, CCT = string.Empty, Usuario = "Admin" };
-            escuelas = await Http.GetFromJsonAsync<Escuela[]>("api/Escuelas");
+            var res = await Http.GetFromJsonAsync<List<Escuela>>("api/Escuelas");
+            if (res != null) escuelas = res;
+        }
+        catch (Exception ex)
+        {
+            mensajeError = $"Error al cargar: {ex.Message}";
+        }
+    }
+
+    private void AbrirModalNuevo()
+    {
+        escuelaActual = new()
+            {
+                Nombre = "",
+                Subdominio = "",
+                ColorPrimario = "#0d6efd",
+                ColorSecundario = "#6c757d",
+                Usuario = "Admin"
+            };
+        editando = false;
+        mostrarFormulario = true;
+        mensajeError = null;
+    }
+
+    private void AbrirModalEditar(Escuela e)
+    {
+        // Clonamos para no afectar la lista visual si cancela
+        escuelaActual = new Escuela
+            {
+                Id = e.Id,
+                Nombre = e.Nombre,
+                Subdominio = e.Subdominio,
+                Slogan = e.Slogan,
+                SitioWeb = e.SitioWeb,
+                ColorPrimario = e.ColorPrimario,
+                ColorSecundario = e.ColorSecundario,
+                LogoUrl = e.LogoUrl,
+                FondoLoginUrl = e.FondoLoginUrl,
+                Usuario = e.Usuario
+            };
+        editando = true;
+        mostrarFormulario = true;
+        mensajeError = null;
+    }
+
+    private async Task GuardarEscuela()
+    {
+        mensajeError = null;
+        try
+        {
+            HttpResponseMessage respuesta;
+
+            if (editando)
+            {
+                respuesta = await Http.PutAsJsonAsync($"api/Escuelas/{escuelaActual.Id}", escuelaActual);
+            }
+            else
+            {
+                respuesta = await Http.PostAsJsonAsync("api/Escuelas", escuelaActual);
+            }
+
+            if (respuesta.IsSuccessStatusCode)
+            {
+                mostrarFormulario = false;
+                await CargarEscuelas();
+            }
+            else
+            {
+                mensajeError = $"Error al guardar: {await respuesta.Content.ReadAsStringAsync()}";
+            }
+        }
+        catch (Exception ex)
+        {
+            mensajeError = $"Error de conexión: {ex.Message}";
+        }
+    }
+
+    private async Task EliminarEscuela(Guid id)
+    {
+        if (await JS.InvokeAsync<bool>("confirm", "⚠️ ¿Estás seguro de desactivar esta escuela? Todos sus usuarios perderán acceso al subdominio."))
+        {
+            var res = await Http.DeleteAsync($"api/Escuelas/{id}");
+            if (res.IsSuccessStatusCode)
+            {
+                await CargarEscuelas();
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("alert", "Error al intentar eliminar la escuela.");
+            }
+        }
+    }
+
+    // CLASE AUXILIAR
+    class UploadResponse { public string Url { get; set; } = ""; }
+
+    // MÉTODOS DE SUBIDA
+    private bool subiendoImagen = false;
+
+    private async Task SubirImagen(InputFileChangeEventArgs e, string tipo)
+    {
+        subiendoImagen = true;
+        var file = e.File;
+        if (file == null) return;
+
+        // Máximo 5 MB por imagen
+        var maxAllowedSize = 5 * 1024 * 1024;
+
+        try
+        {
+            using var content = new MultipartFormDataContent();
+            var fileContent = new StreamContent(file.OpenReadStream(maxAllowedSize));
+            fileContent.Headers.ContentType = new MediaTypeHeaderValue(file.ContentType);
+
+            content.Add(fileContent, "file", file.Name);
+
+            // Mandamos el archivo a la API
+            var response = await Http.PostAsync("api/Escuelas/upload", content);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<UploadResponse>();
+
+                // Armamos la URL completa (Base de la API + ruta del archivo)
+                var urlFinal = $"{Http.BaseAddress.ToString().TrimEnd('/')}{result!.Url}";
+
+                if (tipo == "logo") escuelaActual.LogoUrl = urlFinal;
+                else if (tipo == "fondo") escuelaActual.FondoLoginUrl = urlFinal;
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("alert", "Error al subir la imagen al servidor.");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"El archivo es muy pesado o hubo un error: {ex.Message}");
+        }
+        finally
+        {
+            subiendoImagen = false;
         }
     }
 }

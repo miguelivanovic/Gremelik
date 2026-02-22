@@ -1,0 +1,164 @@
+﻿@page "/configuracion/planteles"
+@using Gremelik.core.Entities
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin")]
+@inject HttpClient Http
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3>🏢 Mis Planteles</h3>
+    <button class="btn btn-primary" @onclick="AbrirModal">
+        <i class="bi bi-plus-circle"></i> Nuevo Plantel
+    </button>
+</div>
+
+@if (planteles == null)
+{
+    <p><em>Cargando infraestructura...</em></p>
+}
+else if (!planteles.Any())
+{
+    <div class="alert alert-warning">
+        ⚠️ Esta escuela no tiene planteles registrados. ¡Registra la Matriz ahora!
+    </div>
+}
+else
+{
+    <div class="row">
+        @foreach (var p in planteles)
+        {
+            <div class="col-md-6 mb-3">
+                <div class="card h-100 border-start border-5 @(p.EsMatriz ? "border-success" : "border-primary") shadow-sm">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <h5 class="card-title fw-bold">@p.Nombre</h5>
+                            @if (p.EsMatriz)
+                            {
+                                <span class="badge bg-success">MATRIZ</span>
+                            }
+                        </div>
+
+                        <p class="card-text text-muted small mb-2">
+                            <i class="bi bi-geo-alt-fill"></i> @p.Calle #@p.Numero, @p.Colonia, @p.Municipio, @p.Estado.
+                        </p>
+
+                        <hr />
+
+                        <div class="row text-secondary small">
+                            <div class="col-6">
+                                <strong>CCT:</strong> @p.CCT
+                            </div>
+                            <div class="col-6">
+                                <strong>RFC:</strong> @p.RFC
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-footer bg-white text-end border-0">
+                        <button class="btn btn-sm btn-outline-primary">Editar</button>
+                        <button class="btn btn-sm btn-outline-danger" @onclick="() => Eliminar(p.Id)">Eliminar</button>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@if (mostrarFormulario)
+{
+    <div class="modal d-block" style="background: rgba(0,0,0,0.5)">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">Registrar Nuevo Plantel</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="() => mostrarFormulario = false"></button>
+                </div>
+                <div class="modal-body">
+                    <EditForm Model="@nuevoPlantel" OnSubmit="GuardarPlantel">
+                        <DataAnnotationsValidator />
+
+                        <div class="row mb-3">
+                            <div class="col-md-8">
+                                <label>Nombre del Plantel (Ej. Campus Norte)</label>
+                                <InputText class="form-control" @bind-Value="nuevoPlantel.Nombre" placeholder="Nombre comercial" />
+                            </div>
+                            <div class="col-md-4">
+                                <label>Estado (Entidad Federativa)</label>
+                                <InputText class="form-control" @bind-Value="nuevoPlantel.Estado" placeholder="Ej. Durango" />
+                            </div>
+                        </div>
+
+                        <h6 class="text-primary mt-4 border-bottom pb-2">📍 Ubicación Física</h6>
+                        <div class="row mb-2">
+                            <div class="col-md-6"><label>Calle</label><InputText class="form-control" @bind-Value="nuevoPlantel.Calle" /></div>
+                            <div class="col-md-2"><label>Número</label><InputText class="form-control" @bind-Value="nuevoPlantel.Numero" /></div>
+                            <div class="col-md-4"><label>Colonia</label><InputText class="form-control" @bind-Value="nuevoPlantel.Colonia" /></div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-6"><label>Municipio</label><InputText class="form-control" @bind-Value="nuevoPlantel.Municipio" /></div>
+                            <div class="col-md-6"><label>Código Postal</label><InputText class="form-control" @bind-Value="nuevoPlantel.CodigoPostal" /></div>
+                        </div>
+
+                        <h6 class="text-primary mt-4 border-bottom pb-2">🏛️ Datos Oficiales</h6>
+                        <div class="row mb-3">
+                            <div class="col-md-4"><label>CCT (SEP)</label><InputText class="form-control" @bind-Value="nuevoPlantel.CCT" /></div>
+                            <div class="col-md-4"><label>RFC (Fiscal)</label><InputText class="form-control" @bind-Value="nuevoPlantel.RFC" /></div>
+                            <div class="col-md-4"><label>Razón Social</label><InputText class="form-control" @bind-Value="nuevoPlantel.RazonSocial" /></div>
+                        </div>
+
+                        <div class="d-flex justify-content-end gap-2 mt-4">
+                            <button type="button" class="btn btn-secondary" @onclick="() => mostrarFormulario = false">Cancelar</button>
+                            <button type="submit" class="btn btn-success">Guardar Plantel</button>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<Plantel>? planteles;
+    private Plantel nuevoPlantel = new();
+    private bool mostrarFormulario = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarPlanteles();
+    }
+
+    private async Task CargarPlanteles()
+    {
+        planteles = await Http.GetFromJsonAsync<List<Plantel>>("api/Planteles");
+    }
+
+    private void AbrirModal()
+    {
+        nuevoPlantel = new() { Activo = true, Estado = "Durango" }; // Valor por defecto
+        mostrarFormulario = true;
+    }
+
+    private async Task GuardarPlantel()
+    {
+        var response = await Http.PostAsJsonAsync("api/Planteles", nuevoPlantel);
+        if (response.IsSuccessStatusCode)
+        {
+            mostrarFormulario = false;
+            await CargarPlanteles();
+        }
+        else
+        {
+            // Manejar error
+            Console.WriteLine("Error al guardar");
+        }
+    }
+
+    private async Task Eliminar(Guid id)
+    {
+        if (await JSRuntime.InvokeAsync<bool>("confirm", "¿Estás seguro de eliminar este plantel?"))
+        {
+            await Http.DeleteAsync($"api/Planteles/{id}");
+            await CargarPlanteles();
+        }
+    }
+
+    [Inject] IJSRuntime JSRuntime { get; set; } = default!;
+}

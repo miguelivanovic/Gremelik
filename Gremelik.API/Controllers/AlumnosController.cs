@@ -1,16 +1,14 @@
 using Gremelik.core.Entities;
 using Gremelik.data.Contexts;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 
 namespace Gremelik.API.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize]
     public class AlumnosController : ControllerBase
     {
         private readonly GremelikDbContext _context;
@@ -24,31 +22,46 @@ namespace Gremelik.API.Controllers
         [HttpGet]
         public async Task<ActionResult<IEnumerable<Alumno>>> GetAlumnos()
         {
-            return await _context.Alumnos.ToListAsync();
+            return await _context.Alumnos
+                .OrderBy(a => a.PrimerApellido) // Ordenado por apellido por defecto
+                .ToListAsync();
         }
 
-        // GET: api/Alumnos/5
+        // --- NUEVO BUSCADOR (MOTOR DE BÚSQUEDA) ---
+        [HttpGet("buscar/{texto}")]
+        public async Task<ActionResult<IEnumerable<Alumno>>> BuscarAlumnos(string texto)
+        {
+            if (string.IsNullOrWhiteSpace(texto)) return new List<Alumno>();
+
+            texto = texto.Trim();
+
+            // Buscamos coincidencias en cualquier campo clave
+            // El Tenant Filter (EscuelaId) se aplica automáticamente por el DbContext
+            return await _context.Alumnos
+                .Where(a => a.Nombre.Contains(texto) ||
+                            a.PrimerApellido.Contains(texto) ||
+                            a.SegundoApellido.Contains(texto) ||
+                            a.Matricula.Contains(texto) ||
+                            a.CURP.Contains(texto))
+                .Where(a => a.Activo) // Solo alumnos activos
+                .OrderBy(a => a.PrimerApellido)
+                .Take(20) // Limitamos a 20 resultados para velocidad
+                .ToListAsync();
+        }
+        // -------------------------------------------
+
         [HttpGet("{id}")]
         public async Task<ActionResult<Alumno>> GetAlumno(Guid id)
         {
             var alumno = await _context.Alumnos.FindAsync(id);
-
-            if (alumno == null)
-            {
-                return NotFound();
-            }
-
+            if (alumno == null) return NotFound();
             return alumno;
         }
 
-        // PUT: api/Alumnos/5
         [HttpPut("{id}")]
         public async Task<IActionResult> PutAlumno(Guid id, Alumno alumno)
         {
-            if (id != alumno.Id)
-            {
-                return BadRequest();
-            }
+            if (id != alumno.Id) return BadRequest("El ID de la URL no coincide con el del cuerpo.");
 
             _context.Entry(alumno).State = EntityState.Modified;
 
@@ -58,62 +71,50 @@ namespace Gremelik.API.Controllers
             }
             catch (DbUpdateConcurrencyException)
             {
-                if (!AlumnoExists(id))
-                {
-                    return NotFound();
-                }
-                else
-                {
-                    throw;
-                }
+                if (!AlumnoExists(id)) return NotFound();
+                else throw;
+            }
+            catch (DbUpdateException)
+            {
+                if (AlumnoExists(alumno.Id)) return Conflict();
+                return BadRequest("Error al actualizar. Verifique datos duplicados.");
             }
 
             return NoContent();
         }
 
-        // POST: api/Alumnos
         [HttpPost]
         public async Task<ActionResult<Alumno>> PostAlumno(Alumno alumno)
         {
-            // Validaciones básicas de datos (opcional)
-            if (alumno.Usuario == null) alumno.Usuario = "Admin";
-            alumno.FUM = DateTime.Now;
-
             try
             {
                 _context.Alumnos.Add(alumno);
-                await _context.SaveChangesAsync(); // <-- Aquí es donde la BD puede gritar "¡Error!"
+                await _context.SaveChangesAsync();
             }
-            catch (DbUpdateException) // <-- Atrapamos el grito de la BD
+            catch (DbUpdateException ex)
             {
-                // Si falla, verificamos si es por la CURP duplicada
-                if (AlumnoExists(alumno.Id))
+                if (ex.InnerException?.Message.Contains("duplicate") == true ||
+                    ex.InnerException?.Message.Contains("UNIQUE") == true)
                 {
-                    return Conflict();
+                    return BadRequest($"Ya existe un alumno con la CURP '{alumno.CURP}' en esta escuela.");
                 }
-                else
-                {
-                    // Mensaje personalizado para el usuario
-                    return BadRequest("Error: Ya existe un alumno con esa CURP en esta escuela.");
-                }
+                return BadRequest($"Error al guardar: {ex.InnerException?.Message ?? ex.Message}");
             }
 
             return CreatedAtAction("GetAlumno", new { id = alumno.Id }, alumno);
         }
 
-        // DELETE: api/Alumnos/5
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteAlumno(Guid id)
         {
             var alumno = await _context.Alumnos.FindAsync(id);
-            if (alumno == null)
-            {
-                return NotFound();
-            }
+            if (alumno == null) return NotFound();
+
+            // Validación extra sugerida: No borrar si tiene historial académico
+            // (Podrías agregar un check a Inscripciones aquí)
 
             _context.Alumnos.Remove(alumno);
             await _context.SaveChangesAsync();
-
             return NoContent();
         }
 

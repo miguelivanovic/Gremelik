@@ -1,0 +1,387 @@
+﻿@page "/configuracion/finanzas"
+@using Gremelik.core.Entities
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin")]
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<div class="container-fluid pb-5">
+    <h3 class="mb-3">💰 Configuración de Cobros</h3>
+
+    <div class="card mb-4 border-primary shadow-sm">
+        <div class="card-body bg-light d-flex align-items-center gap-3 py-2">
+            <label class="fw-bold text-primary"><i class="bi bi-calendar-event"></i> Ciclo Escolar:</label>
+            <select class="form-select w-auto fw-bold" value="@cicloSeleccionadoId" @onchange="CambiarCiclo">
+                <option value="0">-- Selecciona --</option>
+                @if (ciclos != null) { foreach (var c in ciclos) { <option value="@c.Id">@c.Nombre</option> } }
+            </select>
+            @if(cargando) { <div class="spinner-border spinner-border-sm text-primary"></div> }
+        </div>
+    </div>
+
+    @if (cicloSeleccionadoId != 0)
+    {
+        <div class="row">
+            <div class="col-lg-7">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="text-primary fw-bold">1. Conceptos Definidos</h5>
+                    <button class="btn btn-primary btn-sm shadow-sm" @onclick="AbrirModalConcepto">
+                        <i class="bi bi-plus-lg"></i> Nuevo Concepto
+                    </button>
+                </div>
+
+                @if (conceptos == null) { <div class="text-center py-5"><div class="spinner-border text-primary"></div></div> }
+                else if (!conceptos.Any()) { <div class="alert alert-info shadow-sm">No hay conceptos. Define qué vas a cobrar (Ej: Colegiatura).</div> }
+                else
+                {
+                    <div class="list-group shadow-sm">
+                        @foreach (var c in conceptos)
+                        {
+                            <div class="list-group-item list-group-item-action p-3">
+                                <div class="d-flex w-100 justify-content-between align-items-center">
+                                    <div>
+                                        <h5 class="mb-1 fw-bold text-dark">@c.Nombre</h5>
+                                        <div class="mb-2">
+                                            @if(c.GradoId != null) 
+                                            { <span class="badge bg-primary"><i class="bi bi-mortarboard-fill"></i> Solo Grado: @c.NombreGrado</span> }
+                                            else if (c.NivelEducativoId != null)
+                                            { <span class="badge bg-info text-dark"><i class="bi bi-layers-fill"></i> Solo Nivel: @c.NombreNivel</span> }
+                                            else if (c.PlantelId != null)
+                                            { <span class="badge bg-secondary"><i class="bi bi-building"></i> Solo Plantel: @c.NombrePlantel</span> }
+                                            else
+                                            { <span class="badge bg-dark">🌎 Aplica a TODOS</span> }
+                                        </div>
+                                    </div>
+                                    <div class="text-end">
+                                        <h4 class="text-success fw-bold mb-0">$@c.Monto.ToString("N0")</h4>
+                                        <small class="text-muted d-block">
+                                            @if(c.Frecuencia == FrecuenciaPago.AnualDivisible) { <span>Anual</span> }
+                                            else if(c.Frecuencia == FrecuenciaPago.Mensual) { <span>Mensual</span> }
+                                            else { <span>Único</span> }
+                                        </small>
+                                    </div>
+                                </div>
+                                
+                                <div class="d-flex justify-content-between align-items-center mt-2 pt-2 border-top">
+                                    <small class="text-muted">
+                                        @if(c.Obligatorio) { <i class="bi bi-check-circle-fill text-success"></i> <span>Obligatorio</span> }
+                                        else { <i class="bi bi-circle text-muted"></i> <span>Opcional</span> }
+                                        | 
+                                        @if(c.AplicaBeca) { <i class="bi bi-award-fill text-warning"></i> <span>Acepta Becas</span> }
+                                    </small>
+                                    <div>
+                                        <button class="btn btn-sm btn-outline-danger" @onclick="() => EliminarConcepto(c.Id)">
+                                            <i class="bi bi-trash"></i> Eliminar
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+
+            <div class="col-lg-5">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="text-success fw-bold">2. Planes de Pago</h5>
+                    <button class="btn btn-success btn-sm shadow-sm" @onclick="AbrirModalPlan">
+                        <i class="bi bi-plus-lg"></i> Nuevo Plan
+                    </button>
+                </div>
+                
+                <div class="card shadow-sm border-0">
+                    <div class="card-body p-0">
+                         @if (planes == null) { <div class="text-center py-3"><div class="spinner-border text-success"></div></div> }
+                        else if (!planes.Any()) { <div class="alert alert-warning m-3">Sin planes.</div> }
+                        else
+                        {
+                            <div class="list-group list-group-flush">
+                                @foreach (var p in planes)
+                                {
+                                    <div class="list-group-item">
+                                        <div class="d-flex w-100 justify-content-between align-items-center mb-2">
+                                            <div>
+                                                <h6 class="mb-0 fw-bold">@p.Nombre</h6>
+                                                <small class="text-muted">
+                                                    Base: <strong>@p.ConceptoRelacionado?.Nombre</strong>
+                                                </small>
+                                            </div>
+
+                                            @if(p.ConceptoRelacionado != null && p.NumeroPagos > 0)
+                                            {
+                                                <div class="text-end">
+                                                    <span class="badge bg-success fs-6">
+                                                        $@((p.ConceptoRelacionado.Monto / p.NumeroPagos).ToString("N2")) / mes
+                                                    </span>
+                                                    <small class="text-muted d-block" style="font-size:0.7em">
+                                                        @p.NumeroPagos pagos
+                                                    </small>
+                                                </div>
+                                            }
+                                        </div>
+                                        
+                                        <div class="d-flex justify-content-between align-items-center border-top pt-2">
+                                            <div class="small">
+                                                <span class="text-muted me-2">Vence día: <strong>@p.DiaLimitePago</strong></span>
+                                                @if(!string.IsNullOrEmpty(p.MesesDobleCobro))
+                                                {
+                                                    <span class="text-danger fw-bold" title="Meses con doble cobro">
+                                                        <i class="bi bi-exclamation-circle"></i> Dobles: @p.MesesDobleCobro
+                                                    </span>
+                                                }
+                                            </div>
+                                            <button class="btn btn-xs btn-outline-danger py-0" @onclick="() => EliminarPlan(p.Id)">Borrar</button>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@if (modalConcepto)
+{
+    <div class="modal d-block" style="background: rgba(0,0,0,0.5)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5>Nuevo Concepto de Cobro</h5>
+                    <button class="btn-close btn-close-white" @onclick="()=>modalConcepto=false"></button>
+                </div>
+                <div class="modal-body">
+                    <EditForm Model="@conceptoActual" OnSubmit="GuardarConcepto">
+                        
+                        <div class="mb-3">
+                            <label class="fw-bold">Nombre</label>
+                            <InputText class="form-control" @bind-Value="conceptoActual.Nombre" placeholder="Ej: Colegiatura Primaria" />
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-6 mb-3">
+                                <label class="fw-bold">Frecuencia</label>
+                                <InputSelect class="form-select" @bind-Value="conceptoActual.Frecuencia">
+                                    <option value="@FrecuenciaPago.PagoUnico">Único</option>
+                                    <option value="@FrecuenciaPago.Mensual">Mensual Fijo</option>
+                                    <option value="@FrecuenciaPago.AnualDivisible">Anual Divisible</option>
+                                </InputSelect>
+                            </div>
+                            <div class="col-6 mb-3">
+                                <label class="fw-bold text-success">Monto ($)</label>
+                                <InputNumber class="form-control fw-bold" @bind-Value="conceptoActual.Monto" />
+                            </div>
+                        </div>
+
+                        <div class="card bg-light border-0 mb-3">
+                            <div class="card-body">
+                                <h6 class="card-title fw-bold text-muted small mb-2">¿A QUIÉN APLICA ESTE PRECIO?</h6>
+                                <div class="mb-2">
+                                    <label class="small">Plantel</label>
+                                    <select class="form-select form-select-sm" @onchange="CargarNiveles">
+                                        <option value="">-- Aplica a TODOS --</option>
+                                        @if(planteles!=null){ foreach(var p in planteles){ <option value="@p.Id">@p.Nombre</option> } }
+                                    </select>
+                                </div>
+                                <div class="row">
+                                    <div class="col-6">
+                                        <label class="small">Nivel</label>
+                                        <select class="form-select form-select-sm" @onchange="CargarGrados" disabled="@(niveles == null)">
+                                            <option value="">-- Todos --</option>
+                                            @if(niveles!=null){ foreach(var n in niveles){ <option value="@n.Id">@n.Nombre</option> } }
+                                        </select>
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="small">Grado</label>
+                                        <select class="form-select form-select-sm" @bind="tempGradoId" disabled="@(grados == null)">
+                                            <option value="">-- Todos --</option>
+                                            @if(grados!=null){ foreach(var g in grados){ <option value="@g.Id">@g.Nombre</option> } }
+                                        </select>
+                                    </div>
+                                </div>
+                                <small class="text-muted d-block mt-2" style="font-size:0.75rem">
+                                    * Deja todo en "Todos" para crear un precio Global.
+                                </small>
+                            </div>
+                        </div>
+
+                        <div class="d-flex gap-3 mb-3">
+                            <div class="form-check">
+                                <InputCheckbox class="form-check-input" @bind-Value="conceptoActual.Obligatorio" />
+                                <label class="form-check-label">Obligatorio</label>
+                            </div>
+                            <div class="form-check">
+                                <InputCheckbox class="form-check-input" @bind-Value="conceptoActual.AplicaBeca" />
+                                <label class="form-check-label">Acepta Becas</label>
+                            </div>
+                            <div class="form-check">
+                                <InputCheckbox class="form-check-input" @bind-Value="conceptoActual.EsFacturable" />
+                                <label class="form-check-label">Es Facturable</label>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100">Guardar Concepto</button>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (modalPlan)
+{
+    <div class="modal d-block" style="background: rgba(0,0,0,0.5)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5>Nuevo Plan de Pagos</h5><button class="btn-close btn-close-white" @onclick="()=>modalPlan=false"></button>
+                </div>
+                <div class="modal-body">
+                    <EditForm Model="@planActual" OnSubmit="GuardarPlan">
+                        <div class="mb-3"><label>Nombre del Plan</label><InputText class="form-control" @bind-Value="planActual.Nombre" placeholder="Ej: Plan 10 Meses Primaria" /></div>
+                        
+                        <div class="mb-3">
+                            <label>¿Qué concepto vamos a dividir?</label>
+                            <InputSelect class="form-select" @bind-Value="planActual.ConceptoPagoId">
+                                <option value="@Guid.Empty">-- Selecciona --</option>
+                                @if(conceptos != null) { 
+                                    foreach(var c in conceptos.Where(x => x.Frecuencia == FrecuenciaPago.AnualDivisible)) 
+                                    { 
+                                        <option value="@c.Id">
+                                            @c.Nombre 
+                                            @if(c.NombreNivel!=null){ <span>(@c.NombreNivel)</span> }
+                                            - $@c.Monto (Anual)
+                                        </option> 
+                                    } 
+                                }
+                            </InputSelect>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-6"><label>Pagos</label><InputNumber class="form-control" @bind-Value="planActual.NumeroPagos" /></div>
+                            <div class="col-6"><label>Día Límite</label><InputNumber class="form-control" @bind-Value="planActual.DiaLimitePago" /></div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label>Meses con Cobro Doble</label>
+                            <InputText class="form-control" @bind-Value="planActual.MesesDobleCobro" placeholder="Ej: 12, 7" />
+                            <small class="text-muted d-block mt-1">
+                                <i class="bi bi-info-circle"></i> Escribe los números de mes separados por coma (Ej: <b>12, 7</b> para Diciembre y Julio).
+                            </small>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-success w-100">Guardar Plan</button>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    List<CicloEscolar>? ciclos;
+    List<ConceptoPago>? conceptos;
+    List<PlanPago>? planes;
+    List<Plantel>? planteles;
+    
+    int cicloSeleccionadoId = 0;
+    bool cargando = false;
+
+    // Modales
+    bool modalConcepto = false;
+    ConceptoPago conceptoActual = new() { Usuario = "" };
+    
+    bool modalPlan = false;
+    PlanPago planActual = new() { Usuario = "" };
+
+    // Temporales para filtros de creación
+    List<NivelEducativo>? niveles;
+    List<Grado>? grados;
+    Guid? tempPlantelId;
+    Guid? tempNivelId;
+    int? tempGradoId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        planteles = await Http.GetFromJsonAsync<List<Plantel>>("api/Planteles");
+        var todos = await Http.GetFromJsonAsync<List<CicloEscolar>>("api/Ciclos");
+        if(todos != null) ciclos = todos.OrderByDescending(c => c.FechaInicio).ToList();
+    }
+
+    private async Task CambiarCiclo(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int id))
+        {
+            cicloSeleccionadoId = id;
+            await CargarDatos();
+        }
+    }
+
+    private async Task CargarDatos()
+    {
+        cargando = true;
+        conceptos = await Http.GetFromJsonAsync<List<ConceptoPago>>($"api/Finanzas/conceptos/{cicloSeleccionadoId}");
+        planes = await Http.GetFromJsonAsync<List<PlanPago>>($"api/Finanzas/planes/{cicloSeleccionadoId}");
+        cargando = false;
+    }
+
+    // --- CONCEPTO ---
+    void AbrirModalConcepto() {
+        // Reset completo
+        conceptoActual = new() { 
+            CicloEscolarId = cicloSeleccionadoId, Usuario = "", Monto = 0, 
+            Activo = true, Obligatorio = true, AplicaBeca = true, Frecuencia = FrecuenciaPago.PagoUnico 
+        };
+        // Reset filtros visuales
+        tempPlantelId = null; niveles = null; tempNivelId = null; grados = null; tempGradoId = null;
+        modalConcepto = true;
+    }
+
+    // Cascadas dentro del modal
+    async Task CargarNiveles(ChangeEventArgs e) {
+        if (Guid.TryParse(e.Value?.ToString(), out Guid id)) { tempPlantelId = id; niveles = await Http.GetFromJsonAsync<List<NivelEducativo>>($"api/Niveles/plantel/{id}"); }
+        else { tempPlantelId = null; niveles = null; }
+        tempNivelId = null; grados = null; tempGradoId = null;
+    }
+
+    async Task CargarGrados(ChangeEventArgs e) {
+        if (Guid.TryParse(e.Value?.ToString(), out Guid id)) { tempNivelId = id; grados = await Http.GetFromJsonAsync<List<Grado>>($"api/Grados/nivel/{id}"); }
+        else { tempNivelId = null; grados = null; }
+        tempGradoId = null;
+    }
+
+    async Task GuardarConcepto() {
+        // Asignamos los filtros seleccionados al objeto antes de enviar
+        conceptoActual.PlantelId = tempPlantelId;
+        conceptoActual.NivelEducativoId = tempNivelId;
+        conceptoActual.GradoId = (tempGradoId.HasValue && tempGradoId > 0) ? tempGradoId : null;
+
+        var res = await Http.PostAsJsonAsync("api/Finanzas/conceptos", conceptoActual);
+        if(res.IsSuccessStatusCode) { modalConcepto = false; await CargarDatos(); }
+    }
+    
+    async Task EliminarConcepto(Guid id) {
+        if(await JS.InvokeAsync<bool>("confirm", "¿Borrar este concepto?")) {
+            var res = await Http.DeleteAsync($"api/Finanzas/conceptos/{id}");
+            if(res.IsSuccessStatusCode) await CargarDatos();
+            else await JS.InvokeVoidAsync("alert", "Error al borrar. Verifica dependencias.");
+        }
+    }
+
+    // --- PLANES ---
+    void AbrirModalPlan() {
+        planActual = new() { CicloEscolarId = cicloSeleccionadoId, NumeroPagos = 10, Usuario = "", Activo = true };
+        modalPlan = true;
+    }
+
+    async Task GuardarPlan() {
+        if(planActual.ConceptoPagoId == Guid.Empty) return;
+        var res = await Http.PostAsJsonAsync("api/Finanzas/planes", planActual);
+        if(res.IsSuccessStatusCode) { modalPlan = false; await CargarDatos(); }
+    }
+    
+    async Task EliminarPlan(Guid id) {
+        if(await JS.InvokeAsync<bool>("confirm", "¿Eliminar?")) { await Http.DeleteAsync($"api/Finanzas/planes/{id}"); await CargarDatos(); }
+    }
+}

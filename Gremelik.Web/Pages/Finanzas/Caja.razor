@@ -1,0 +1,423 @@
+﻿@page "/finanzas/caja"
+@using Gremelik.core.Entities
+@using Gremelik.core.DTOs
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin")]
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<div class="container-fluid pb-5">
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card shadow-sm mb-3">
+                <div class="card-body bg-light">
+                    <h5 class="card-title text-primary"><i class="bi bi-person-bounding-box"></i> Buscar Alumno</h5>
+                    <div class="input-group">
+                        <input type="text" class="form-control form-control-lg" placeholder="Matrícula o Nombre..."
+                               @bind="textoBusqueda" @onkeyup="@EnterBuscar" />
+                        <button class="btn btn-primary" @onclick="BuscarAlumno"><i class="bi bi-search"></i></button>
+                    </div>
+
+                    @if (resultadosBusqueda != null && resultadosBusqueda.Any())
+                    {
+                        <div class="list-group mt-2 shadow" style="position: absolute; z-index: 1000; width: 95%;">
+                            @foreach (var a in resultadosBusqueda)
+                            {
+                                <button class="list-group-item list-group-item-action" @onclick="() => SeleccionarAlumno(a)">
+                                    <strong>@a.PrimerApellido @a.SegundoApellido @a.Nombre</strong> <small class="text-muted">(@a.Matricula)</small>
+                                </button>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+
+            @if (alumnoSeleccionado != null)
+            {
+                <div class="card shadow-sm border-primary mb-3">
+                    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                        <span class="fw-bold">@alumnoSeleccionado.Nombre @alumnoSeleccionado.PrimerApellido @alumnoSeleccionado.SegundoApellido</span>
+                        <small>@alumnoSeleccionado.Matricula</small>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="p-3 bg-light border-bottom">
+                            <label class="small fw-bold">Ver deudas del ciclo:</label>
+                            <select class="form-select form-select-sm w-auto d-inline-block ms-2" @onchange="CambiarCiclo">
+                                <option value="0">-- Selecciona --</option>
+                                @if (ciclos != null)
+                                {
+                                    foreach (var c in ciclos)
+                                    {
+                                        <option value="@c.Id">@c.Nombre</option>
+                                    }
+                                }
+                            </select>
+                        </div>
+
+                        @if (deudas == null)
+                        {
+                            <div class="text-center py-4"><div class="spinner-border text-primary"></div></div>
+                        }
+                        else if (!deudas.Any())
+                        {
+                            <div class="alert alert-success m-3">🎉 ¡Este alumno no tiene adeudos pendientes!</div>
+                        }
+                        else
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-hover mb-0 align-middle">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th style="width: 40px;"></th>
+                                            <th>Concepto</th>
+                                            <th>Vence</th>
+                                            <th class="text-end">Monto</th>
+                                            <th class="text-end">Desc.</th>
+                                            <th class="text-end">A Pagar</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var d in deudas)
+                                        {
+                                            <tr class="@(d.Seleccionado ? "table-active" : "")" @onclick="() => ToggleSeleccion(d)">
+                                                <td class="text-center">
+                                                    <input type="checkbox" class="form-check-input" checked="@d.Seleccionado" readonly />
+                                                </td>
+                                                <td>
+                                                    @d.Datos.ConceptoNombre <span class="badge bg-light text-dark border ms-1">@d.Datos.NumeroDePago</span>
+                                                    @if (d.Datos.Estado == "PARCIAL")
+                                                    {
+                                                        <span class="badge bg-warning text-dark">PARCIAL</span>
+                                                    }
+                                                </td>
+                                                <td>
+                                                    @if (d.Datos.FechaVencimiento < DateTime.Today)
+                                                    {
+                                                        <span class="text-danger fw-bold">@d.Datos.FechaVencimiento.ToShortDateString()</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span>@d.Datos.FechaVencimiento.ToShortDateString()</span>
+                                                    }
+                                                </td>
+                                                <td class="text-end">$@d.Datos.MontoBase.ToString("N2")</td>
+                                                <td class="text-end text-success">-$@d.Datos.DescuentoBeca.ToString("N2")</td>
+                                                <td class="text-end fw-bold fs-6">$@d.SaldoActual.ToString("N2")</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card shadow h-100 border-success">
+                <div class="card-header bg-success text-white text-center py-3">
+                    <h4 class="mb-0"><i class="bi bi-cart4"></i> CAJA</h4>
+                </div>
+                <div class="card-body d-flex flex-column">
+
+                    <div class="flex-grow-1 overflow-auto mb-3" style="max-height: 300px;">
+                        <h6 class="text-muted border-bottom pb-2">Conceptos Seleccionados:</h6>
+                        @if (deudas != null && deudas.Any(x => x.Seleccionado))
+                        {
+                            <ul class="list-group list-group-flush small">
+                                @foreach (var sel in deudas.Where(x => x.Seleccionado))
+                                {
+                                    <li class="list-group-item d-flex justify-content-between px-0">
+                                        <span>@sel.Datos.ConceptoNombre</span>
+                                        <span class="fw-bold">$@sel.SaldoActual.ToString("N2")</span>
+                                    </li>
+                                }
+                            </ul>
+                        }
+                        else
+                        {
+                            <p class="text-muted text-center mt-4">Selecciona conceptos de la izquierda para cobrar.</p>
+                        }
+                    </div>
+
+                    <div class="bg-light p-3 rounded mb-3">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="fs-5">Total a Pagar:</span>
+                            <span class="fs-4 fw-bold text-dark">$@TotalSeleccionado.ToString("N2")</span>
+                        </div>
+
+                        <div class="mb-2">
+                            <label class="small fw-bold">Método de Pago</label>
+                            <select class="form-select" @bind="metodoPago">
+                                <option value="1">Efectivo</option>
+                                <option value="2">Tarjeta Débito</option>
+                                <option value="3">Tarjeta Crédito</option>
+                                <option value="4">Transferencia</option>
+                                <option value="5">Cheque</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-2">
+                            <label class="small fw-bold">Dinero Recibido ($)</label>
+                            <input type="number" class="form-control form-control-lg text-end fw-bold text-success"
+                                   @bind="dineroRecibido" @bind:event="oninput" />
+                        </div>
+
+                        <div class="d-flex justify-content-between border-top pt-2">
+                            <span class="fs-5 fw-bold text-muted">Cambio:</span>
+                            <span class="fs-4 fw-bold @(Cambio >= 0 ? "text-primary" : "text-danger")">
+                                $@Cambio.ToString("N2")
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="mb-2">
+                        <textarea class="form-control form-control-sm" placeholder="Comentarios opcionales..." @bind="comentarios"></textarea>
+                    </div>
+
+                    <div class="mb-3 p-3 border rounded @(requiereFactura ? "bg-primary bg-opacity-10 border-primary" : "bg-light")">
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" id="checkFactura"
+                                   @bind="requiereFactura"
+                                   disabled="@(!HayConceptosFacturables)"> <label class="form-check-label fw-bold @(requiereFactura ? "text-primary" : "text-muted")" for="checkFactura">
+                                <i class="bi bi-receipt"></i> Requiere Factura CFDI
+                            </label>
+                        </div>
+
+                        @if (!HayConceptosFacturables && TotalSeleccionado > 0)
+                        {
+                            <small class="text-warning d-block mb-2">
+                                <i class="bi bi-info-circle"></i> Los conceptos seleccionados no son facturables.
+                            </small>
+                        }
+
+                        @if (requiereFactura)
+                        {
+                            <label class="small fw-bold">Seleccionar Datos Fiscales (Tutor)</label>
+                            <select class="form-select border-primary" @bind="tutorSeleccionadoId">
+                                <option value="">-- Selecciona a quién facturar --</option>
+                                @if (tutoresAlumno != null)
+                                {
+                                    @foreach (var t in tutoresAlumno)
+                                    {
+                                        <option value="@t.Id">
+                                            @t.Nombre @t.PrimerApellido - RFC: @(string.IsNullOrEmpty(t.RFC) ? "SIN RFC" : t.RFC)
+                                        </option>
+                                    }
+                                }
+                            </select>
+
+                            @if (tutoresAlumno != null && tutorSeleccionadoId.HasValue)
+                            {
+                                var tut = tutoresAlumno.FirstOrDefault(x => x.Id == tutorSeleccionadoId);
+                                if (tut != null && string.IsNullOrEmpty(tut.RFC))
+                                {
+                                    <small class="text-danger d-block mt-1">
+                                        <i class="bi bi-exclamation-triangle-fill"></i> Este tutor no tiene RFC capturado.
+                                    </small>
+                                }
+                            }
+                        }
+                    </div>
+
+                    <button class="btn btn-success w-100 py-3 fw-bold fs-5 shadow"
+                            @onclick="ProcesarCobro"
+                            disabled="@(!PuedeCobrar)">
+                        <i class="bi bi-check-circle-fill"></i> COBRAR
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    class DeudaUI
+    {
+        public CuentaPorCobrar Datos { get; set; } = new() { Usuario = "" };
+        public bool Seleccionado { get; set; }
+        public decimal SaldoActual => Datos.MontoBase - Datos.DescuentoBeca + Datos.RecargosAcumulados - Datos.TotalPagado;
+    }
+
+    string textoBusqueda = "";
+    List<Alumno>? resultadosBusqueda;
+    Alumno? alumnoSeleccionado;
+    List<CicloEscolar>? ciclos;
+    int cicloId = 0;
+    List<DeudaUI>? deudas;
+    int metodoPago = 1;
+    decimal dineroRecibido = 0;
+    string comentarios = "";
+
+    decimal TotalSeleccionado => deudas?.Where(x => x.Seleccionado).Sum(x => x.SaldoActual) ?? 0;
+    // NUEVO: Verifica si hay al menos un concepto facturable seleccionado
+    bool HayConceptosFacturables => deudas?.Any(x => x.Seleccionado && x.Datos.EsFacturable) ?? false;
+    decimal Cambio => dineroRecibido - TotalSeleccionado;
+    bool PuedeCobrar => TotalSeleccionado > 0 && (metodoPago != 1 || dineroRecibido >= TotalSeleccionado);
+
+    // Variables de Facturación
+    bool requiereFactura = false;
+    List<Tutor>? tutoresAlumno;
+    Guid? tutorSeleccionadoId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var todos = await Http.GetFromJsonAsync<List<CicloEscolar>>("api/Ciclos");
+            if (todos != null)
+            {
+                ciclos = todos.OrderByDescending(c => c.FechaInicio).ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ Error: {ex.Message}");
+        }
+    }
+
+    async Task BuscarAlumno()
+    {
+        if (string.IsNullOrWhiteSpace(textoBusqueda)) return;
+        resultadosBusqueda = await Http.GetFromJsonAsync<List<Alumno>>($"api/Alumnos/buscar/{textoBusqueda}");
+    }
+    async Task EnterBuscar(KeyboardEventArgs e) { if (e.Key == "Enter") await BuscarAlumno(); }
+
+    async Task SeleccionarAlumno(Alumno a)
+    {
+        alumnoSeleccionado = a;
+        resultadosBusqueda = null;
+        textoBusqueda = "";
+        deudas = null;
+
+        // --- BÚSQUEDA DE TUTORES PROTEGIDA ---
+        requiereFactura = false;
+        tutorSeleccionadoId = null;
+        tutoresAlumno = new List<Tutor>(); // Inicializamos vacío por defecto
+
+        try
+        {
+            var respuestaTutores = await Http.GetFromJsonAsync<List<Tutor>>($"api/Caja/tutores/{a.Id}");
+            if (respuestaTutores != null)
+            {
+                tutoresAlumno = respuestaTutores;
+                var tutorConRFC = tutoresAlumno.FirstOrDefault(t => !string.IsNullOrWhiteSpace(t.RFC));
+                if (tutorConRFC != null) tutorSeleccionadoId = tutorConRFC.Id;
+                else if (tutoresAlumno.Any()) tutorSeleccionadoId = tutoresAlumno.First().Id;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"El alumno no tiene tutores o hubo un error: {ex.Message}");
+            // No hacemos que truene, simplemente la lista queda vacía.
+        }
+        // -------------------------------------
+
+        if (ciclos != null && ciclos.Any())
+        {
+            if (cicloId == 0)
+            {
+                var cicloActual = ciclos.FirstOrDefault(c => c.Estatus == EstatusCiclo.Actual);
+                cicloId = cicloActual != null ? cicloActual.Id : ciclos.First().Id;
+            }
+            await CargarDeudas();
+        }
+    }
+
+    async Task CambiarCiclo(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int id))
+        {
+            cicloId = id;
+            await CargarDeudas();
+        }
+    }
+
+    async Task CargarDeudas()
+    {
+        if (alumnoSeleccionado == null || cicloId == 0) return;
+        var rawDeudas = await Http.GetFromJsonAsync<List<CuentaPorCobrar>>($"api/Cuentas/alumno/{alumnoSeleccionado.Id}/ciclo/{cicloId}");
+        if (rawDeudas != null)
+        {
+            deudas = rawDeudas
+                .Where(x => x.Activo && x.Estado != "PAGADO")
+                .Select(x => new DeudaUI { Datos = x, Seleccionado = false })
+                .ToList();
+        }
+        dineroRecibido = 0;
+    }
+
+    void ToggleSeleccion(DeudaUI d)
+    {
+        d.Seleccionado = !d.Seleccionado;
+        if (dineroRecibido == 0) dineroRecibido = TotalSeleccionado;
+
+        // Si ya no hay conceptos facturables, apagamos el switch por seguridad
+        if (!HayConceptosFacturables)
+        {
+            requiereFactura = false;
+        }
+    }
+
+    async Task ProcesarCobro()
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Cobrar ${TotalSeleccionado:N2}?")) return;
+
+        var itemsAPagar = deudas!.Where(x => x.Seleccionado)
+            .Select(x => new DetallePagoDto
+                {
+                    CuentaPorCobrarId = x.Datos.Id,
+                    MontoAPagar = x.SaldoActual
+                }).ToList();
+
+        // Asegúrate de validar si pidió factura pero no seleccionó tutor
+        if (requiereFactura && tutorSeleccionadoId == null)
+        {
+            await JS.InvokeVoidAsync("alert", "⚠️ Selecciona un Tutor para emitir la factura.");
+            return;
+        }
+
+        var pagoDto = new NuevoPagoDto
+            {
+                AlumnoId = alumnoSeleccionado!.Id,
+                CicloId = cicloId,
+                MetodoPago = metodoPago,
+                DineroRecibido = dineroRecibido,
+                Comentarios = comentarios,
+                ConceptosAPagar = itemsAPagar,
+
+            // --- ENVIAR DATOS DE FACTURACIÓN ---
+                RequiereFactura = requiereFactura,
+                TutorId = tutorSeleccionadoId
+            };
+
+        var response = await Http.PostAsJsonAsync("api/Caja/cobrar", pagoDto);
+
+        if (response.IsSuccessStatusCode)
+        {
+            // LEER LA RESPUESTA PARA OBTENER EL ID
+            var resultado = await response.Content.ReadFromJsonAsync<RespuestaCobro>();
+
+            await JS.InvokeVoidAsync("alert", $"✅ ¡Cobro Exitoso! (Folio: {resultado.Folio})");
+
+            // MAGIA: ABRIR PDF EN NUEVA PESTAÑA 📄
+            // Construimos la URL completa a la API
+            var urlPdf = $"{Http.BaseAddress}api/Reportes/recibo/{resultado.PagoId}";
+            await JS.InvokeVoidAsync("open", urlPdf, "_blank");
+
+            await CargarDeudas();
+        }
+        else
+        {
+            var msg = await response.Content.ReadAsStringAsync();
+            await JS.InvokeVoidAsync("alert", "❌ Error: " + msg);
+        }
+    }
+
+    class RespuestaCobro
+    {
+        public string Mensaje { get; set; } = "";
+        public int Folio { get; set; }
+        public Guid PagoId { get; set; }
+    }
+}

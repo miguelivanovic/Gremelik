@@ -28,9 +28,13 @@ namespace Gremelik.data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<bool>("Activo")
+                        .HasColumnType("bit");
+
                     b.Property<string>("CURP")
                         .IsRequired()
-                        .HasColumnType("nvarchar(450)");
+                        .HasMaxLength(18)
+                        .HasColumnType("nvarchar(18)");
 
                     b.Property<Guid>("EscuelaId")
                         .HasColumnType("uniqueidentifier");
@@ -38,10 +42,13 @@ namespace Gremelik.data.Migrations
                     b.Property<int>("Estatus")
                         .HasColumnType("int");
 
-                    b.Property<DateTime>("FUM")
+                    b.Property<DateTime?>("FUM")
                         .HasColumnType("datetime2");
 
                     b.Property<DateTime>("FechaNacimiento")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaRegistro")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("Matricula")
@@ -61,7 +68,6 @@ namespace Gremelik.data.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("SegundoApellido")
-                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("Usuario")
@@ -70,10 +76,403 @@ namespace Gremelik.data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("EscuelaId");
+
                     b.HasIndex("CURP", "EscuelaId")
                         .IsUnique();
 
                     b.ToTable("Alumnos");
+                });
+
+            modelBuilder.Entity("Gremelik.core.Entities.ApplicationUser", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<int>("AccessFailedCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<bool>("EmailConfirmed")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid?>("EscuelaId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("LockoutEnabled")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTimeOffset?>("LockoutEnd")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("NombreCompleto")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("NormalizedEmail")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("NormalizedUserName")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("PasswordHash")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("PhoneNumber")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("PhoneNumberConfirmed")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("SecurityStamp")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("TwoFactorEnabled")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("UserName")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NormalizedEmail")
+                        .HasDatabaseName("EmailIndex");
+
+                    b.HasIndex("NormalizedUserName")
+                        .IsUnique()
+                        .HasDatabaseName("UserNameIndex")
+                        .HasFilter("[NormalizedUserName] IS NOT NULL");
+
+                    b.ToTable("Usuarios", (string)null);
+                });
+
+            modelBuilder.Entity("Gremelik.core.Entities.Beca", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("AplicaEnColegiatura")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("AplicaEnInscripcion")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("CicloEscolarId")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("EscuelaId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("FUM")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaRegistro")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal>("MontoFijo")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<decimal>("Porcentaje")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("Usuario")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Becas");
+                });
+
+            modelBuilder.Entity("Gremelik.core.Entities.CicloEscolar", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("EscuelaId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Estatus")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("FUM")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaFin")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaInicio")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaRegistro")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Usuario")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EscuelaId");
+
+                    b.ToTable("CiclosEscolares");
+                });
+
+            modelBuilder.Entity("Gremelik.core.Entities.ConceptoPago", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("AplicaBeca")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("CicloEscolarId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("EsFacturable")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("EscuelaId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("FUM")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaRegistro")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Frecuencia")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("GradoId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Monto")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<Guid?>("NivelEducativoId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("NombreGrado")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("NombreNivel")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("NombrePlantel")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("Obligatorio")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid?>("PlantelId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Usuario")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ConceptosPago");
+                });
+
+            modelBuilder.Entity("Gremelik.core.Entities.CostoInscripcion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("CicloEscolarId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Concepto")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("FUM")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaRegistro")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("GradoId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Monto")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<Guid?>("NivelEducativoId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Usuario")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CicloEscolarId");
+
+                    b.HasIndex("GradoId");
+
+                    b.HasIndex("NivelEducativoId");
+
+                    b.ToTable("CostosInscripcion");
+                });
+
+            modelBuilder.Entity("Gremelik.core.Entities.CuentaPorCobrar", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("AlumnoId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("BecaId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("CicloEscolarId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ConceptoNombre")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("ConceptoPagoId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("DescuentoBeca")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<bool>("EsFacturable")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("EscuelaId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("FUM")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaPago")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaRegistro")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaVencimiento")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal>("MontoBase")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("NumeroDePago")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("RecargosAcumulados")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("TotalPagado")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("Usuario")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AlumnoId");
+
+                    b.ToTable("CuentasPorCobrar");
+                });
+
+            modelBuilder.Entity("Gremelik.core.Entities.DetallePago", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("ConceptoNombreSnapshot")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("CuentaPorCobrarId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("FUM")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaRegistro")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal>("MontoAbonado")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<Guid>("PagoId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Usuario")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CuentaPorCobrarId");
+
+                    b.HasIndex("PagoId");
+
+                    b.ToTable("DetallesPagos");
                 });
 
             modelBuilder.Entity("Gremelik.core.Entities.Escuela", b =>
@@ -82,28 +481,50 @@ namespace Gremelik.data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<string>("CCT")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
+                    b.Property<bool>("Activo")
+                        .HasColumnType("bit");
 
-                    b.Property<DateTime>("FUM")
+                    b.Property<string>("ColorPrimario")
+                        .IsRequired()
+                        .HasMaxLength(7)
+                        .HasColumnType("nvarchar(7)");
+
+                    b.Property<string>("ColorSecundario")
+                        .IsRequired()
+                        .HasMaxLength(7)
+                        .HasColumnType("nvarchar(7)");
+
+                    b.Property<DateTime?>("FUM")
                         .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaRegistro")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("FondoLoginUrl")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<string>("LogoUrl")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
 
                     b.Property<string>("Nombre")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
-                    b.Property<string>("RVOE")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
+                    b.Property<string>("SitioWeb")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
 
-                    b.Property<string>("RazonSocial")
+                    b.Property<string>("Slogan")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Subdominio")
                         .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
                     b.Property<string>("Usuario")
                         .IsRequired()
@@ -120,15 +541,20 @@ namespace Gremelik.data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<bool>("Activo")
+                        .HasColumnType("bit");
+
                     b.Property<string>("Alergias")
-                        .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
                     b.Property<Guid>("AlumnoId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<DateTime>("FUM")
+                    b.Property<DateTime?>("FUM")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaRegistro")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("NombreContactoEmergencia")
@@ -142,7 +568,6 @@ namespace Gremelik.data.Migrations
                         .HasColumnType("nvarchar(20)");
 
                     b.Property<string>("TipoSangre")
-                        .IsRequired()
                         .HasMaxLength(10)
                         .HasColumnType("nvarchar(10)");
 
@@ -155,30 +580,475 @@ namespace Gremelik.data.Migrations
                     b.ToTable("FichasMedicas");
                 });
 
-            modelBuilder.Entity("Gremelik.core.Entities.RelacionAlumnoTutor", b =>
+            modelBuilder.Entity("Gremelik.core.Entities.Grado", b =>
                 {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("NivelEducativoId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("Numero")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NivelEducativoId");
+
+                    b.ToTable("Grados");
+                });
+
+            modelBuilder.Entity("Gremelik.core.Entities.Grupo", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("CicloEscolarId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("CupoMaximo")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("FUM")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaRegistro")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("GradoId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("MaestroTutorId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Turno")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Usuario")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CicloEscolarId");
+
+                    b.HasIndex("GradoId");
+
+                    b.HasIndex("MaestroTutorId");
+
+                    b.ToTable("Grupos");
+                });
+
+            modelBuilder.Entity("Gremelik.core.Entities.Inscripcion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("bit");
+
                     b.Property<Guid>("AlumnoId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<Guid>("TutorId")
-                        .HasColumnType("uniqueidentifier");
+                    b.Property<int>("CicloEscolarId")
+                        .HasColumnType("int");
 
-                    b.Property<DateTime>("FUM")
+                    b.Property<bool>("EsNuevoIngreso")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("FUM")
                         .HasColumnType("datetime2");
 
-                    b.Property<Guid>("Id")
+                    b.Property<DateTime>("FechaRegistro")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("GradoId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("GrupoId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("MontoBase")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("MontoDescuento")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("MontoFinal")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("MotivoDescuentoManual")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("PlantelId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ReglaDescuentoId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Usuario")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AlumnoId");
+
+                    b.HasIndex("CicloEscolarId");
+
+                    b.HasIndex("GradoId");
+
+                    b.HasIndex("GrupoId");
+
+                    b.HasIndex("PlantelId");
+
+                    b.HasIndex("ReglaDescuentoId");
+
+                    b.ToTable("Inscripciones");
+                });
+
+            modelBuilder.Entity("Gremelik.core.Entities.NivelEducativo", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("FechaRVOE")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("Orden")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("PlantelId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("RVOE")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlantelId");
+
+                    b.ToTable("NivelesEducativos");
+                });
+
+            modelBuilder.Entity("Gremelik.core.Entities.Pago", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("AlumnoId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("Cambio")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("CicloEscolarId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Comentarios")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<decimal>("DineroRecibido")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<Guid>("EscuelaId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("FUM")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaPago")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaRegistro")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Folio")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Folio"));
+
+                    b.Property<int>("MetodoPago")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("RequiereFactura")
+                        .HasColumnType("bit");
+
+                    b.Property<decimal>("TotalPagado")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<Guid?>("TutorId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Usuario")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AlumnoId");
+
+                    b.HasIndex("TutorId");
+
+                    b.ToTable("Pagos");
+                });
+
+            modelBuilder.Entity("Gremelik.core.Entities.PlanPago", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("CicloEscolarId")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("ConceptoPagoId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("DiaLimitePago")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("EscuelaId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("FUM")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaRegistro")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("MesesDobleCobro")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("NumeroPagos")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("RecargoMonto")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("RecargoPorcentaje")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("Usuario")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConceptoPagoId");
+
+                    b.ToTable("PlanesPago");
+                });
+
+            modelBuilder.Entity("Gremelik.core.Entities.Plantel", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("CCT")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Calle")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("CodigoPostal")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("CodigoPostalFiscal")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Colonia")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("EsMatriz")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("EscuelaId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("JefaturaSector")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Municipio")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Numero")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("RFC")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("RazonSocial")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("RegimenFiscal")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ZonaEscolar")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EscuelaId");
+
+                    b.ToTable("Planteles");
+                });
+
+            modelBuilder.Entity("Gremelik.core.Entities.ReglaDescuento", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("CicloEscolarId")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("EscuelaId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("FUM")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaFinValidez")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaInicioValidez")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaRegistro")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal>("MontoFijo")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<decimal>("Porcentaje")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("Tipo")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Usuario")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CicloEscolarId");
+
+                    b.ToTable("ReglasDescuento");
+                });
+
+            modelBuilder.Entity("Gremelik.core.Entities.RelacionAlumnoTutor", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("AlumnoId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("FUM")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaRegistro")
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("Parentesco")
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
+                    b.Property<Guid>("TutorId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("Usuario")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.HasKey("AlumnoId", "TutorId");
+                    b.HasKey("Id");
 
                     b.ToTable("RelacionAlumnoTutor");
                 });
@@ -189,12 +1059,17 @@ namespace Gremelik.data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<bool>("Activo")
+                        .HasColumnType("bit");
+
                     b.Property<string>("CodigoPostal")
-                        .IsRequired()
                         .HasMaxLength(5)
                         .HasColumnType("nvarchar(5)");
 
-                    b.Property<DateTime>("FUM")
+                    b.Property<DateTime?>("FUM")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaRegistro")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("Nombre")
@@ -213,12 +1088,10 @@ namespace Gremelik.data.Migrations
                         .HasColumnType("nvarchar(13)");
 
                     b.Property<string>("RegimenFiscal")
-                        .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
                     b.Property<string>("SegundoApellido")
-                        .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
@@ -229,6 +1102,459 @@ namespace Gremelik.data.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Tutores");
+                });
+
+            modelBuilder.Entity("Gremelik.core.Entities.UsuarioPlantel", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("EsCoordinador")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("PlantelId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("UsuarioId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlantelId");
+
+                    b.HasIndex("UsuarioId");
+
+                    b.ToTable("UsuariosPlanteles");
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("NormalizedName")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NormalizedName")
+                        .IsUnique()
+                        .HasDatabaseName("RoleNameIndex")
+                        .HasFilter("[NormalizedName] IS NOT NULL");
+
+                    b.ToTable("Roles", (string)null);
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ClaimType")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ClaimValue")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("RoleId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RoleId");
+
+                    b.ToTable("AspNetRoleClaims", (string)null);
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserClaim<string>", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ClaimType")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ClaimValue")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("AspNetUserClaims", (string)null);
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserLogin<string>", b =>
+                {
+                    b.Property<string>("LoginProvider")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("ProviderKey")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("ProviderDisplayName")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("LoginProvider", "ProviderKey");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("AspNetUserLogins", (string)null);
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserRole<string>", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("RoleId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("UserId", "RoleId");
+
+                    b.HasIndex("RoleId");
+
+                    b.ToTable("UsuariosRoles", (string)null);
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserToken<string>", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("LoginProvider")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("Value")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("UserId", "LoginProvider", "Name");
+
+                    b.ToTable("AspNetUserTokens", (string)null);
+                });
+
+            modelBuilder.Entity("Gremelik.core.Entities.Alumno", b =>
+                {
+                    b.HasOne("Gremelik.core.Entities.Escuela", "Escuela")
+                        .WithMany()
+                        .HasForeignKey("EscuelaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Escuela");
+                });
+
+            modelBuilder.Entity("Gremelik.core.Entities.CicloEscolar", b =>
+                {
+                    b.HasOne("Gremelik.core.Entities.Escuela", "Escuela")
+                        .WithMany()
+                        .HasForeignKey("EscuelaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Escuela");
+                });
+
+            modelBuilder.Entity("Gremelik.core.Entities.CostoInscripcion", b =>
+                {
+                    b.HasOne("Gremelik.core.Entities.CicloEscolar", "CicloEscolar")
+                        .WithMany()
+                        .HasForeignKey("CicloEscolarId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Gremelik.core.Entities.Grado", "Grado")
+                        .WithMany()
+                        .HasForeignKey("GradoId");
+
+                    b.HasOne("Gremelik.core.Entities.NivelEducativo", "NivelEducativo")
+                        .WithMany()
+                        .HasForeignKey("NivelEducativoId");
+
+                    b.Navigation("CicloEscolar");
+
+                    b.Navigation("Grado");
+
+                    b.Navigation("NivelEducativo");
+                });
+
+            modelBuilder.Entity("Gremelik.core.Entities.CuentaPorCobrar", b =>
+                {
+                    b.HasOne("Gremelik.core.Entities.Alumno", "Alumno")
+                        .WithMany()
+                        .HasForeignKey("AlumnoId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Alumno");
+                });
+
+            modelBuilder.Entity("Gremelik.core.Entities.DetallePago", b =>
+                {
+                    b.HasOne("Gremelik.core.Entities.CuentaPorCobrar", "CuentaPorCobrar")
+                        .WithMany()
+                        .HasForeignKey("CuentaPorCobrarId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Gremelik.core.Entities.Pago", "Pago")
+                        .WithMany("Detalles")
+                        .HasForeignKey("PagoId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CuentaPorCobrar");
+
+                    b.Navigation("Pago");
+                });
+
+            modelBuilder.Entity("Gremelik.core.Entities.Grado", b =>
+                {
+                    b.HasOne("Gremelik.core.Entities.NivelEducativo", "NivelEducativo")
+                        .WithMany()
+                        .HasForeignKey("NivelEducativoId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("NivelEducativo");
+                });
+
+            modelBuilder.Entity("Gremelik.core.Entities.Grupo", b =>
+                {
+                    b.HasOne("Gremelik.core.Entities.CicloEscolar", "CicloEscolar")
+                        .WithMany()
+                        .HasForeignKey("CicloEscolarId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Gremelik.core.Entities.Grado", "Grado")
+                        .WithMany()
+                        .HasForeignKey("GradoId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Gremelik.core.Entities.ApplicationUser", "MaestroTutor")
+                        .WithMany()
+                        .HasForeignKey("MaestroTutorId");
+
+                    b.Navigation("CicloEscolar");
+
+                    b.Navigation("Grado");
+
+                    b.Navigation("MaestroTutor");
+                });
+
+            modelBuilder.Entity("Gremelik.core.Entities.Inscripcion", b =>
+                {
+                    b.HasOne("Gremelik.core.Entities.Alumno", "Alumno")
+                        .WithMany()
+                        .HasForeignKey("AlumnoId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Gremelik.core.Entities.CicloEscolar", "CicloEscolar")
+                        .WithMany()
+                        .HasForeignKey("CicloEscolarId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Gremelik.core.Entities.Grado", "Grado")
+                        .WithMany()
+                        .HasForeignKey("GradoId");
+
+                    b.HasOne("Gremelik.core.Entities.Grupo", "Grupo")
+                        .WithMany()
+                        .HasForeignKey("GrupoId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Gremelik.core.Entities.Plantel", "Plantel")
+                        .WithMany()
+                        .HasForeignKey("PlantelId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Gremelik.core.Entities.ReglaDescuento", "ReglaDescuento")
+                        .WithMany()
+                        .HasForeignKey("ReglaDescuentoId");
+
+                    b.Navigation("Alumno");
+
+                    b.Navigation("CicloEscolar");
+
+                    b.Navigation("Grado");
+
+                    b.Navigation("Grupo");
+
+                    b.Navigation("Plantel");
+
+                    b.Navigation("ReglaDescuento");
+                });
+
+            modelBuilder.Entity("Gremelik.core.Entities.NivelEducativo", b =>
+                {
+                    b.HasOne("Gremelik.core.Entities.Plantel", "Plantel")
+                        .WithMany()
+                        .HasForeignKey("PlantelId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Plantel");
+                });
+
+            modelBuilder.Entity("Gremelik.core.Entities.Pago", b =>
+                {
+                    b.HasOne("Gremelik.core.Entities.Alumno", "Alumno")
+                        .WithMany()
+                        .HasForeignKey("AlumnoId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Gremelik.core.Entities.Tutor", "Tutor")
+                        .WithMany()
+                        .HasForeignKey("TutorId");
+
+                    b.Navigation("Alumno");
+
+                    b.Navigation("Tutor");
+                });
+
+            modelBuilder.Entity("Gremelik.core.Entities.PlanPago", b =>
+                {
+                    b.HasOne("Gremelik.core.Entities.ConceptoPago", "ConceptoRelacionado")
+                        .WithMany()
+                        .HasForeignKey("ConceptoPagoId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ConceptoRelacionado");
+                });
+
+            modelBuilder.Entity("Gremelik.core.Entities.Plantel", b =>
+                {
+                    b.HasOne("Gremelik.core.Entities.Escuela", "Escuela")
+                        .WithMany()
+                        .HasForeignKey("EscuelaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Escuela");
+                });
+
+            modelBuilder.Entity("Gremelik.core.Entities.ReglaDescuento", b =>
+                {
+                    b.HasOne("Gremelik.core.Entities.CicloEscolar", "CicloEscolar")
+                        .WithMany()
+                        .HasForeignKey("CicloEscolarId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CicloEscolar");
+                });
+
+            modelBuilder.Entity("Gremelik.core.Entities.UsuarioPlantel", b =>
+                {
+                    b.HasOne("Gremelik.core.Entities.Plantel", "Plantel")
+                        .WithMany()
+                        .HasForeignKey("PlantelId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Gremelik.core.Entities.ApplicationUser", "Usuario")
+                        .WithMany()
+                        .HasForeignKey("UsuarioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Plantel");
+
+                    b.Navigation("Usuario");
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
+                {
+                    b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole", null)
+                        .WithMany()
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserClaim<string>", b =>
+                {
+                    b.HasOne("Gremelik.core.Entities.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserLogin<string>", b =>
+                {
+                    b.HasOne("Gremelik.core.Entities.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserRole<string>", b =>
+                {
+                    b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole", null)
+                        .WithMany()
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Gremelik.core.Entities.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserToken<string>", b =>
+                {
+                    b.HasOne("Gremelik.core.Entities.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Gremelik.core.Entities.Pago", b =>
+                {
+                    b.Navigation("Detalles");
                 });
 #pragma warning restore 612, 618
         }

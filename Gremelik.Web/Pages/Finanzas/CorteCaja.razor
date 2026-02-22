@@ -1,0 +1,202 @@
+﻿@page "/finanzas/corte-caja"
+@using Gremelik.core.DTOs
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin")]
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<div class="container-fluid pb-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3><i class="bi bi-cash-stack text-success"></i> Corte de Caja Diario</h3>
+
+        <div class="d-flex align-items-center gap-2">
+            <label class="fw-bold text-muted mb-0 ms-3">Cajero:</label>
+            <select class="form-select border-primary fw-bold" @bind="cajeroSeleccionado">
+                <option value="">TODOS LOS CAJEROS</option>
+                @foreach (var c in CajerosDisponibles)
+                {
+                    <option value="@c">@c</option>
+                }
+            </select>
+
+            <label class="fw-bold text-muted mb-0 ms-2">Fecha:</label>
+            <input type="date" class="form-control" @bind="fechaSeleccionada" @bind:after="CargarCorte" />
+            <button class="btn btn-primary" @onclick="CargarCorte"><i class="bi bi-arrow-clockwise"></i></button>
+        </div>
+    </div>
+
+    @if (cargando)
+    {
+        <div class="text-center py-5"><div class="spinner-border text-success"></div></div>
+    }
+    else if (corte == null)
+    {
+        <div class="alert alert-danger">Error al cargar la información del corte.</div>
+    }
+    else
+    {
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="card shadow-sm border-success h-100 bg-success text-white">
+                    <div class="card-body text-center">
+                        <h6 class="text-uppercase mb-2 opacity-75">Ingreso Total Filtrado</h6>
+                        <h2 class="mb-0 fw-bold">$@TotalFiltrado.ToString("N2")</h2>
+                        <small>@PagosFiltrados.Count() operaciones registradas</small>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-8">
+                <div class="card shadow-sm h-100">
+                    <div class="card-header bg-light fw-bold text-muted">Desglose por Método de Pago</div>
+                    <div class="card-body">
+                        <div class="row text-center">
+                            @if (!ResumenMetodosFiltrado.Any())
+                            {
+                                <p class="text-muted mb-0">No hay ingresos registrados para este filtro.</p>
+                            }
+                            else
+                            {
+                                @foreach (var metodo in ResumenMetodosFiltrado)
+                                {
+                                    <div class="col">
+                                        <h6 class="text-muted mb-1">@metodo.MetodoPago</h6>
+                                        <h4 class="fw-bold @(metodo.MetodoPago == "Efectivo" ? "text-success" : "text-primary")">
+                                            $@metodo.Total.ToString("N2")
+                                        </h4>
+                                        <small class="text-muted">@metodo.CantidadOperaciones op.</small>
+                                    </div>
+                                }
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card shadow-sm border-primary">
+            <div class="card-header bg-white fw-bold d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-list-check text-primary"></i> Detalle de Recibos</span>
+                <button class="btn btn-sm btn-outline-primary fw-bold" @onclick="ImprimirCortePdf" disabled="@(!PagosFiltrados.Any())">
+                    <i class="bi bi-printer-fill"></i> Imprimir Corte
+                </button>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Folio</th>
+                                <th>Hora</th>
+                                <th>Alumno</th>
+                                <th>Método</th>
+                                <th>Usuario/Cajero</th>
+                                <th class="text-center">CFDI</th>
+                                <th class="text-end">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (!PagosFiltrados.Any())
+                            {
+                                <tr><td colspan="7" class="text-center py-4 text-muted fw-bold">No hay recibos con estos filtros.</td></tr>
+                            }
+                            else
+                            {
+                                @foreach (var pago in PagosFiltrados)
+                                {
+                                    <tr>
+                                        <td class="fw-bold text-primary">#@pago.Folio</td>
+                                        <td>@pago.FechaPago.ToString("HH:mm tt")</td>
+                                        <td>@pago.AlumnoNombre</td>
+                                        <td><span class="badge bg-light text-dark border">@pago.MetodoPago</span></td>
+                                        <td>@pago.Usuario</td>
+                                        <td class="text-center">
+                                            @if (pago.RequiereFactura)
+                                            {
+                                                <i class="bi bi-check-circle-fill text-success" title="Requiere Factura"></i>
+                                            }
+                                            else
+                                            {
+                                                <i class="bi bi-dash text-muted"></i>
+                                            }
+                                        </td>
+                                        <td class="text-end fw-bold">$@pago.Total.ToString("N2")</td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    DateTime fechaSeleccionada = DateTime.Today;
+    CorteCajaDto? corte;
+    bool cargando = true;
+
+    // --- VARIABLES DE FILTRO ---
+    string cajeroSeleccionado = "";
+
+    // Lista de cajeros únicos en el día
+    IEnumerable<string> CajerosDisponibles => corte?.DetallePagos.Select(p => p.Usuario).Distinct() ?? Array.Empty<string>();
+
+    // Lista de pagos aplicando el filtro visual
+    // Lista de pagos aplicando el filtro visual
+    List<PagoCorteDto> PagosFiltrados => string.IsNullOrEmpty(cajeroSeleccionado)
+        ? (corte?.DetallePagos ?? new List<PagoCorteDto>())
+        : (corte?.DetallePagos.Where(p => p.Usuario == cajeroSeleccionado).ToList() ?? new List<PagoCorteDto>());
+
+    // Recálculo automático de la tarjeta verde
+    decimal TotalFiltrado => PagosFiltrados.Sum(p => p.Total);
+
+    // Recálculo automático de los métodos de pago
+    IEnumerable<ResumenMetodoPagoDto> ResumenMetodosFiltrado => PagosFiltrados
+        .GroupBy(p => p.MetodoPago)
+        .Select(g => new ResumenMetodoPagoDto
+            {
+                MetodoPago = g.Key,
+                Total = g.Sum(x => x.Total),
+                CantidadOperaciones = g.Count()
+            });
+    // ----------------------------
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarCorte();
+    }
+
+    async Task CargarCorte()
+    {
+        cargando = true;
+        cajeroSeleccionado = ""; // Limpiamos el filtro al cambiar de día
+        try
+        {
+            var fechaStr = fechaSeleccionada.ToString("yyyy-MM-dd");
+            corte = await Http.GetFromJsonAsync<CorteCajaDto>($"api/ReportesFinancieros/corte-caja?fechaConsulta={fechaStr}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al cargar el corte: {ex.Message}");
+            corte = null;
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    // --- ACCIÓN DE IMPRIMIR ---
+    private async Task ImprimirCortePdf()
+    {
+        var fechaStr = fechaSeleccionada.ToString("yyyy-MM-dd");
+        // Si no seleccionó cajero, mandamos "TODOS"
+        var paramCajero = string.IsNullOrEmpty(cajeroSeleccionado) ? "TODOS" : cajeroSeleccionado;
+
+        var urlPdf = $"api/Reportes/corte-caja?fecha={fechaStr}&cajero={paramCajero}";
+
+        // Abrimos el PDF en una pestaña nueva
+        await JS.InvokeVoidAsync("window.open", urlPdf, "_blank");
+    }
+}

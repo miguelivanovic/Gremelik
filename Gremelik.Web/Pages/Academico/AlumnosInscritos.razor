@@ -1,0 +1,269 @@
+﻿@page "/academico/listas"
+@using Gremelik.core.Entities
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin")]
+@inject HttpClient Http
+
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3>📋 Listas de Grupo</h3>
+        <button class="btn btn-outline-secondary btn-sm" @onclick="ImprimirLista" disabled="@(listaAlumnos == null || !listaAlumnos.Any())">
+            <i class="bi bi-printer"></i> Imprimir
+        </button>
+    </div>
+
+    <div class="card mb-4 shadow-sm">
+        <div class="card-body py-2">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-3">
+                    <label class="small text-muted">Ciclo Escolar</label>
+                    <select class="form-select form-select-sm fw-bold" value="@cicloSeleccionadoId" @onchange="CambiarCiclo">
+                        @if (ciclos != null)
+                        {
+                            @foreach (var c in ciclos)
+                            {
+                                <option value="@c.Id">@c.Nombre @(c.Actual ? "(ACTUAL)" : "")</option>
+                            }
+                        }
+                    </select>
+                </div>
+
+                <div class="col-md-3">
+                    <label class="small text-muted">Plantel</label>
+                    <select class="form-select form-select-sm" @onchange="CargarNiveles">
+                        <option value="">-- Seleccionar --</option>
+                        @if (planteles != null)
+                        {
+                            foreach (var p in planteles)
+                            {
+                                <option value="@p.Id">@p.Nombre</option>
+                            }
+                        }
+                    </select>
+                </div>
+
+                <div class="col-md-2">
+                    <label class="small text-muted">Nivel</label>
+                    <select class="form-select form-select-sm" @onchange="CargarGrados" disabled="@(niveles == null)">
+                        <option value="">-- --</option>
+                        @if (niveles != null)
+                        {
+                            foreach (var n in niveles)
+                            {
+                                <option value="@n.Id">@n.Nombre</option>
+                            }
+                        }
+                    </select>
+                </div>
+
+                <div class="col-md-2">
+                    <label class="small text-muted">Grado</label>
+                    <select class="form-select form-select-sm" @onchange="CargarGrupos" disabled="@(grados == null)">
+                        <option value="">-- --</option>
+                        @if (grados != null)
+                        {
+                            foreach (var g in grados)
+                            {
+                                <option value="@g.Id">@g.Nombre</option>
+                            }
+                        }
+                    </select>
+                </div>
+
+                <div class="col-md-2">
+                    <label class="small text-muted">Grupo</label>
+                    <select class="form-select form-select-sm" @onchange="CargarLista" disabled="@(grupos == null)">
+                        <option value="0">-- Ver Todos --</option>
+                        @if (grupos != null)
+                        {
+                            foreach (var gr in grupos)
+                            {
+                                <option value="@gr.Id">@gr.Nombre</option>
+                            }
+                        }
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (cargando)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary"></div>
+            <p>Cargando alumnos...</p>
+        </div>
+    }
+    else if (listaAlumnos != null && listaAlumnos.Any())
+    {
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white border-bottom">
+                <span class="badge bg-primary">Total: @listaAlumnos.Count alumnos</span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>#</th>
+                            <th>Matrícula</th>
+                            <th>Alumno</th>
+                            <th>Grupo</th>
+                            <th>Estatus</th>
+                            <th>Deuda Inscripción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @{
+                            int i = 1;
+                        }
+                        @foreach (var item in listaAlumnos)
+                        {
+                            <tr>
+                                <td class="text-muted small">@(i++)</td>
+                                <td class="fw-bold text-secondary">@item.Alumno?.Matricula</td>
+                                <td>
+                                    <span class="fw-bold d-block">@item.Alumno?.PrimerApellido @item.Alumno?.SegundoApellido</span>
+                                    <span>@item.Alumno?.Nombre</span>
+                                </td>
+                                <td>
+                                    @if (item.Grupo != null)
+                                    {
+                                        <span class="badge bg-light text-dark border">@item.Grupo.Grado?.Nombre "@item.Grupo.Nombre"</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-warning text-dark">Sin Grupo</span>
+                                    }
+                                </td>
+                                <td>
+                                    <span class="badge @(item.Activo ? "bg-success" : "bg-danger")">
+                                        @(item.Activo ? "Activo" : "Baja")
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="text-danger fw-bold">$@item.MontoFinal.ToString("N2")</span>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+    else if (gradoSeleccionadoId != 0)
+    {
+        <div class="alert alert-info text-center mt-3">
+            <i class="bi bi-info-circle"></i> No hay alumnos inscritos con estos filtros.
+        </div>
+    }
+</div>
+
+@code {
+    // Listas para filtros
+    List<CicloEscolar>? ciclos;
+    List<Plantel>? planteles;
+    List<NivelEducativo>? niveles;
+    List<Grado>? grados;
+    List<Grupo>? grupos;
+
+    // Lista de resultados (Usamos Inscripcion porque conecta Alumno con Grupo)
+    List<Inscripcion>? listaAlumnos;
+
+    // Estado
+    int cicloSeleccionadoId = 0;
+    int gradoSeleccionadoId = 0;
+    int grupoSeleccionadoId = 0;
+    bool cargando = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Cargamos catálogos iniciales
+        planteles = await Http.GetFromJsonAsync<List<Plantel>>("api/Planteles");
+        var todosCiclos = await Http.GetFromJsonAsync<List<CicloEscolar>>("api/Ciclos");
+
+        if (todosCiclos != null)
+        {
+            ciclos = todosCiclos.OrderBy(c => c.Estatus).ToList();
+            // Seleccionar el actual por defecto
+            var actual = ciclos.FirstOrDefault(c => c.Actual);
+            if (actual != null) cicloSeleccionadoId = actual.Id;
+            else if (ciclos.Any()) cicloSeleccionadoId = ciclos.First().Id;
+        }
+    }
+
+    // --- CASCADA DE FILTROS ---
+    private async Task CambiarCiclo(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int id))
+        {
+            cicloSeleccionadoId = id;
+            if (gradoSeleccionadoId != 0) await CargarLista(null); // Recargar si ya había filtros
+        }
+    }
+
+    private async Task CargarNiveles(ChangeEventArgs e)
+    {
+        if (Guid.TryParse(e.Value?.ToString(), out Guid id))
+            niveles = await Http.GetFromJsonAsync<List<NivelEducativo>>($"api/Niveles/plantel/{id}");
+        grados = null; grupos = null; listaAlumnos = null;
+    }
+
+    private async Task CargarGrados(ChangeEventArgs e)
+    {
+        if (Guid.TryParse(e.Value?.ToString(), out Guid id))
+            grados = await Http.GetFromJsonAsync<List<Grado>>($"api/Grados/nivel/{id}");
+        grupos = null; listaAlumnos = null;
+    }
+
+    private async Task CargarGrupos(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int id))
+        {
+            gradoSeleccionadoId = id;
+            // Cargamos grupos del ciclo seleccionado
+            grupos = await Http.GetFromJsonAsync<List<Grupo>>($"api/Grupos/grado/{id}/ciclo/{cicloSeleccionadoId}");
+
+            // Cargamos la lista completa del grado (sin filtrar grupo aun)
+            grupoSeleccionadoId = 0;
+            await EjecutarConsulta();
+        }
+    }
+
+    private async Task CargarLista(ChangeEventArgs? e)
+    {
+        // Si viene del select de grupo
+        if (e != null && int.TryParse(e.Value?.ToString(), out int id))
+        {
+            grupoSeleccionadoId = id;
+        }
+        await EjecutarConsulta();
+    }
+
+    private async Task EjecutarConsulta()
+    {
+        cargando = true;
+
+        // Construimos la URL de búsqueda
+        // Necesitamos un endpoint en InscripcionesController que soporte filtros
+        // Usaremos uno genérico que crearemos ahora
+
+        string url = $"api/Inscripciones/lista?cicloId={cicloSeleccionadoId}&gradoId={gradoSeleccionadoId}";
+        if (grupoSeleccionadoId != 0) url += $"&grupoId={grupoSeleccionadoId}";
+
+        try
+        {
+            listaAlumnos = await Http.GetFromJsonAsync<List<Inscripcion>>(url);
+        }
+        catch
+        {
+            listaAlumnos = new();
+        }
+
+        cargando = false;
+    }
+
+    private void ImprimirLista()
+    {
+        // Pendiente: Implementar impresión
+    }
+}

@@ -1,0 +1,191 @@
+﻿@page "/configuracion/becas"
+@using Gremelik.core.Entities
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin")]
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<div class="container-fluid">
+    <h3 class="mb-3">🎓 Catálogo de Becas</h3>
+    
+    <div class="card mb-4 border-primary shadow-sm">
+        <div class="card-body bg-light d-flex align-items-center gap-3 py-2">
+            <label class="fw-bold text-primary"><i class="bi bi-calendar-event"></i> Ciclo Escolar:</label>
+            <select class="form-select w-auto fw-bold" value="@cicloSeleccionadoId" @onchange="CambiarCiclo">
+                <option value="0">-- Selecciona --</option>
+                @if (ciclos != null) { foreach (var c in ciclos) { <option value="@c.Id">@c.Nombre</option> } }
+            </select>
+        </div>
+    </div>
+
+    @if (cicloSeleccionadoId != 0)
+    {
+        <div class="d-flex justify-content-end mb-3">
+            <button class="btn btn-primary shadow-sm" @onclick="AbrirModal">
+                <i class="bi bi-plus-lg"></i> Nueva Beca
+            </button>
+        </div>
+
+        @if (becas == null)
+        {
+            <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+        }
+        else if (!becas.Any())
+        {
+            <div class="alert alert-info shadow-sm">No hay becas registradas para este ciclo.</div>
+        }
+        else
+        {
+            <div class="row">
+                @foreach (var b in becas)
+                {
+                    <div class="col-md-4 mb-4">
+                        <div class="card shadow-sm h-100 border-0 border-start border-4 border-info">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <h5 class="card-title text-dark fw-bold mb-0">@b.Nombre</h5>
+                                    <div class="dropdown">
+                                        <button class="btn btn-sm btn-light" data-bs-toggle="dropdown">
+                                            <i class="bi bi-three-dots-vertical"></i>
+                                        </button>
+                                        <ul class="dropdown-menu">
+                                            <li><button class="dropdown-item" @onclick="() => Editar(b)">Editar</button></li>
+                                            <li><button class="dropdown-item text-danger" @onclick="() => Eliminar(b.Id)">Eliminar</button></li>
+                                        </ul>
+                                    </div>
+                                </div>
+                                
+                                <h3 class="my-3 text-info fw-bold">
+                                    @if(b.Porcentaje > 0) { <span>@b.Porcentaje.ToString("0")%</span> }
+                                    else { <span>$@b.MontoFijo.ToString("N0")</span> }
+                                    <small class="text-muted fs-6 fw-normal"> descuento</small>
+                                </h3>
+
+                                <div class="d-flex gap-2 flex-wrap">
+                                    @if(b.AplicaEnColegiatura) 
+                                    { <span class="badge bg-light text-dark border"><i class="bi bi-calendar-check"></i> Colegiatura</span> }
+                                    @if(b.AplicaEnInscripcion) 
+                                    { <span class="badge bg-light text-dark border"><i class="bi bi-pencil-square"></i> Inscripción</span> }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    }
+</div>
+
+@if (mostrarModal)
+{
+    <div class="modal d-block" style="background: rgba(0,0,0,0.5)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">@(nuevaBeca.Id == Guid.Empty ? "Nueva" : "Editar") Beca</h5>
+                    <button class="btn-close btn-close-white" @onclick="()=>mostrarModal=false"></button>
+                </div>
+                <div class="modal-body">
+                    <EditForm Model="@nuevaBeca" OnSubmit="Guardar">
+                        <div class="mb-3">
+                            <label class="fw-bold">Nombre de la Beca</label>
+                            <InputText class="form-control" @bind-Value="nuevaBeca.Nombre" placeholder="Ej: Hermanos, Excelencia" />
+                        </div>
+                        
+                        <div class="row mb-3 bg-light p-2 rounded mx-0">
+                            <div class="col-6">
+                                <label class="fw-bold">Porcentaje (%)</label>
+                                <InputNumber class="form-control fw-bold text-primary" @bind-Value="nuevaBeca.Porcentaje" />
+                            </div>
+                            <div class="col-6">
+                                <label class="fw-bold">Monto Fijo ($)</label>
+                                <InputNumber class="form-control fw-bold text-success" @bind-Value="nuevaBeca.MontoFijo" />
+                            </div>
+                            <small class="text-muted mt-2 text-center">
+                                <i class="bi bi-info-circle"></i> Llena solo uno. Si ambos tienen valor, el sistema prioriza Porcentaje.
+                            </small>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="fw-bold d-block mb-2">¿A qué conceptos aplica?</label>
+                            <div class="form-check form-switch mb-2">
+                                <InputCheckbox class="form-check-input" @bind-Value="nuevaBeca.AplicaEnColegiatura" />
+                                <label class="form-check-label">Colegiaturas Mensuales</label>
+                            </div>
+                            <div class="form-check form-switch">
+                                <InputCheckbox class="form-check-input" @bind-Value="nuevaBeca.AplicaEnInscripcion" />
+                                <label class="form-check-label">Inscripción / Reinscripción</label>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100 mt-3">Guardar Beca</button>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    List<CicloEscolar>? ciclos;
+    List<Beca>? becas;
+    Beca nuevaBeca = new() { Usuario = "" };
+    
+    int cicloSeleccionadoId = 0;
+    bool mostrarModal = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var todos = await Http.GetFromJsonAsync<List<CicloEscolar>>("api/Ciclos");
+        if(todos != null) ciclos = todos.OrderByDescending(c => c.FechaInicio).ToList();
+    }
+
+    private async Task CambiarCiclo(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int id))
+        {
+            cicloSeleccionadoId = id;
+            await CargarBecas();
+        }
+    }
+
+    async Task CargarBecas()
+    {
+        becas = await Http.GetFromJsonAsync<List<Beca>>($"api/Becas/ciclo/{cicloSeleccionadoId}");
+    }
+
+    void AbrirModal() {
+        nuevaBeca = new() { 
+            Usuario = "", 
+            Porcentaje = 0, 
+            MontoFijo = 0, 
+            AplicaEnColegiatura = true, 
+            Activo = true,
+            CicloEscolarId = cicloSeleccionadoId // IMPORTANTE: Se asigna al ciclo actual
+        };
+        mostrarModal = true;
+    }
+
+    void Editar(Beca b) {
+        nuevaBeca = new() {
+            Id = b.Id, Nombre = b.Nombre, Porcentaje = b.Porcentaje, MontoFijo = b.MontoFijo,
+            AplicaEnColegiatura = b.AplicaEnColegiatura, AplicaEnInscripcion = b.AplicaEnInscripcion,
+            CicloEscolarId = b.CicloEscolarId, EscuelaId = b.EscuelaId, Usuario = b.Usuario
+        };
+        mostrarModal = true;
+    }
+
+    async Task Guardar() {
+        HttpResponseMessage res;
+        if(nuevaBeca.Id != Guid.Empty) res = await Http.PutAsJsonAsync($"api/Becas/{nuevaBeca.Id}", nuevaBeca);
+        else res = await Http.PostAsJsonAsync("api/Becas", nuevaBeca);
+
+        if(res.IsSuccessStatusCode) { mostrarModal = false; await CargarBecas(); }
+    }
+
+    async Task Eliminar(Guid id) {
+        if(await JS.InvokeAsync<bool>("confirm", "¿Eliminar esta beca?")) {
+            await Http.DeleteAsync($"api/Becas/{id}");
+            await CargarBecas();
+        }
+    }
+}

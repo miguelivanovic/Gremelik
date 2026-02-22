@@ -1,0 +1,255 @@
+﻿@page "/alumnos"
+@using Gremelik.core.Entities
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@inject HttpClient Http
+@inject Gremelik.Web.Services.TenantService Tenant
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h3>
+        Alumnos
+        <small class="text-muted fs-6">(@(Tenant.SubdominioActual?.ToUpper() ?? "VISTA ADMIN"))</small>
+    </h3>
+
+    <AuthorizeView>
+        <Authorized>
+            <button class="btn btn-primary" @onclick="AbrirModalCrear">
+                <i class="bi bi-person-plus-fill"></i> Nuevo Alumno
+            </button>
+        </Authorized>
+    </AuthorizeView>
+</div>
+
+@if (mensajeError != null)
+{
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        @mensajeError
+        @if (mensajeError.Contains("401"))
+        {
+            <br />
+
+            <a href="login" class="fw-bold">Haga clic aquí para iniciar sesión nuevamente.</a>
+        }
+        <button type="button" class="btn-close" @onclick="() => mensajeError = null"></button>
+    </div>
+}
+
+@if (cargando)
+{
+    <div class="d-flex justify-content-center my-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Cargando...</span>
+        </div>
+    </div>
+}
+else if (alumnos == null || !alumnos.Any())
+{
+    <div class="alert alert-info">
+        No hay alumnos registrados o no has iniciado sesión para verlos.
+    </div>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>Matrícula</th>
+                    <th>Nombre Completo</th>
+                    <th>CURP</th>
+                    <th>NIA</th>
+                    <th>Estatus</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var alumno in alumnos)
+                {
+                    <tr>
+                        <td>@alumno.Matricula</td>
+                        <td>@alumno.Nombre @alumno.PrimerApellido @alumno.SegundoApellido</td>
+                        <td>@alumno.CURP</td>
+                        <td>@alumno.NIA</td>
+                        <td>
+                            <span class="badge @ObtenerClaseEstatus(alumno.Estatus)">
+                                @alumno.Estatus
+                            </span>
+                        </td>
+                        <td>
+                            <AuthorizeView>
+                                <Authorized>
+                                    <button class="btn btn-sm btn-outline-secondary">Editar</button>
+                                </Authorized>
+                            </AuthorizeView>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (mostrarFormulario)
+{
+    <div class="card mt-4 shadow-sm border-primary">
+        <div class="card-header bg-primary text-white d-flex justify-content-between">
+            <span>Registrar Nuevo Alumno</span>
+            <button type="button" class="btn-close btn-close-white" @onclick="() => mostrarFormulario = false"></button>
+        </div>
+        <div class="card-body">
+            <EditForm Model="@nuevoAlumno" OnSubmit="GuardarAlumno">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Nombre</label>
+                        <InputText class="form-control" @bind-Value="nuevoAlumno.Nombre" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Primer Apellido</label>
+                        <InputText class="form-control" @bind-Value="nuevoAlumno.PrimerApellido" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Segundo Apellido</label>
+                        <InputText class="form-control" @bind-Value="nuevoAlumno.SegundoApellido" />
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Matrícula</label>
+                        <InputText class="form-control" @bind-Value="nuevoAlumno.Matricula" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">CURP</label>
+                        <InputText class="form-control" @bind-Value="nuevoAlumno.CURP" maxlength="18" style="text-transform:uppercase" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">NIA</label>
+                        <InputText class="form-control" @bind-Value="nuevoAlumno.NIA" />
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Fecha Nacimiento</label>
+                        <InputDate class="form-control" @bind-Value="nuevoAlumno.FechaNacimiento" />
+                    </div>
+                </div>
+
+                <div class="d-flex gap-2 justify-content-end">
+                    <button type="button" class="btn btn-secondary" @onclick="() => mostrarFormulario = false">Cancelar</button>
+                    <button type="submit" class="btn btn-success">Guardar Alumno</button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+}
+
+@code {
+    private Alumno[]? alumnos;
+    private Alumno nuevoAlumno = new()
+        {
+            Nombre = "",
+            PrimerApellido = "",
+            CURP = "",
+            Matricula = "",
+            NIA = "",
+            Usuario = "Sistema",
+            FechaNacimiento = DateTime.Today.AddYears(-5)
+        };
+    private bool mostrarFormulario = false;
+    private string? mensajeError;
+    private bool cargando = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarAlumnos();
+    }
+
+    private async Task CargarAlumnos()
+    {
+        cargando = true;
+        mensajeError = null;
+        try
+        {
+            alumnos = await Http.GetFromJsonAsync<Alumno[]>("api/Alumnos");
+        }
+        catch (HttpRequestException ex)
+        {
+            if (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                mensajeError = "Sesión expirada o no iniciada (Error 401).";
+            }
+            else
+            {
+                mensajeError = $"Error de conexión: {ex.Message}";
+            }
+        }
+        catch (Exception ex)
+        {
+            mensajeError = "Error al intentar cargar la lista.";
+            Console.WriteLine(ex.Message);
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    private void AbrirModalCrear()
+    {
+        // Reiniciar el formulario
+        nuevoAlumno = new()
+            {
+                Nombre = "",
+                PrimerApellido = "",
+                CURP = "",
+                Matricula = "",
+                NIA = "",
+                Usuario = "Sistema",
+                FechaNacimiento = DateTime.Today.AddYears(-5)
+            };
+        mensajeError = null;
+        mostrarFormulario = true;
+    }
+
+    private async Task GuardarAlumno(EditContext context)
+    {
+        mensajeError = null;
+
+        if (!context.Validate()) return;
+
+        try
+        {
+            var respuesta = await Http.PostAsJsonAsync("api/Alumnos", nuevoAlumno);
+
+            if (respuesta.IsSuccessStatusCode)
+            {
+                mostrarFormulario = false;
+                await CargarAlumnos(); // Recargar lista
+            }
+            else
+            {
+                var errorMsg = await respuesta.Content.ReadAsStringAsync();
+                mensajeError = $"Error al guardar: {errorMsg}";
+            }
+        }
+        catch (Exception ex)
+        {
+            mensajeError = $"Error crítico: {ex.Message}";
+        }
+    }
+
+    private string ObtenerClaseEstatus(EstatusAlumno estatus)
+    {
+        return estatus switch
+        {
+            EstatusAlumno.Activo => "bg-success",
+            EstatusAlumno.Baja => "bg-danger",
+            EstatusAlumno.Egresado => "bg-secondary",
+            _ => "bg-primary"
+        };
+    }
+}

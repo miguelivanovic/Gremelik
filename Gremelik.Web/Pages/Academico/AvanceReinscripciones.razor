@@ -1,0 +1,249 @@
+﻿@page "/academico/avance-reinscripcion"
+@using Gremelik.core.Entities
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin")]
+@inject HttpClient Http
+
+<div class="container-fluid">
+    <h3>📊 Avance de Reinscripción</h3>
+    <p class="text-muted">Comparativa: Alumnos Actuales vs Ciclo Próximo</p>
+
+    <div class="card mb-4 shadow-sm">
+        <div class="card-body py-2">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-3">
+                    <label class="small text-muted">Plantel</label>
+                    <select class="form-select form-select-sm" @onchange="CargarNiveles">
+                        <option value="">-- Todos --</option>
+                        @if (planteles != null)
+                        {
+                            foreach (var p in planteles)
+                            {
+                                <option value="@p.Id">@p.Nombre</option>
+                            }
+                        }
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="small text-muted">Nivel</label>
+                    <select class="form-select form-select-sm" @onchange="CargarGrados" disabled="@(niveles == null)">
+                        <option value="">-- Todos --</option>
+                        @if (niveles != null)
+                        {
+                            foreach (var n in niveles)
+                            {
+                                <option value="@n.Id">@n.Nombre</option>
+                            }
+                        }
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="small text-muted">Grado (Actual)</label>
+                    <select class="form-select form-select-sm" @onchange="CargarGrupos" disabled="@(grados == null)">
+                        <option value="0">-- Todos --</option>
+                        @if (grados != null)
+                        {
+                            foreach (var g in grados)
+                            {
+                                <option value="@g.Id">@g.Nombre</option>
+                            }
+                        }
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="small text-muted">Grupo (Actual)</label>
+                    <select class="form-select form-select-sm" @onchange="FiltrarPorGrupo" disabled="@(grupos == null)">
+                        <option value="0">-- Todos --</option>
+                        @if (grupos != null)
+                        {
+                            foreach (var gr in grupos)
+                            {
+                                <option value="@gr.Id">@gr.Nombre</option>
+                            }
+                        }
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (resumen != null)
+    {
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="card bg-primary text-white text-center p-3">
+                    <h3>@resumen.Count</h3>
+                    <small>Matrícula Actual (Filtrada)</small>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card bg-success text-white text-center p-3">
+                    <h3>@resumen.Count(x => x.YaSeReinscribio)</h3>
+                    <small>Ya Reinscritos (@Porcentaje(resumen.Count(x => x.YaSeReinscribio), resumen.Count)%)</small>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card bg-danger text-white text-center p-3">
+                    <h3>@resumen.Count(x => !x.YaSeReinscribio)</h3>
+                    <small>Faltan por Pagar</small>
+                </div>
+            </div>
+        </div>
+
+        <div class="card shadow-sm">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Matrícula</th>
+                            <th>Alumno</th>
+                            <th>Ubicación Actual</th>
+                            <th>Estatus Próximo Ciclo</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in resumen)
+                        {
+                            <tr>
+                                <td class="fw-bold text-secondary">@item.Matricula</td>
+                                <td>@item.NombreCompleto</td>
+                                <td>@item.GradoActual "@item.GrupoActual"</td>
+                                <td>
+                                    @if (item.YaSeReinscribio)
+                                    {
+                                        <span class="badge bg-success">
+                                            ✅ LISTO <span class="text-white-50 ms-1">-> @item.Destino</span>
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-warning text-dark">⏳ PENDIENTE</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary"></div>
+            <p>Calculando avance...</p>
+        </div>
+    }
+</div>
+
+@code {
+    class ItemReporte
+    {
+        public string Matricula { get; set; } = "";
+        public string NombreCompleto { get; set; } = "";
+        public string GradoActual { get; set; } = "";
+        public string GrupoActual { get; set; } = "";
+        public bool YaSeReinscribio { get; set; }
+        public string Destino { get; set; } = ""; // Info extra
+    }
+
+    List<ItemReporte>? resumen;
+    List<Plantel>? planteles;
+    List<NivelEducativo>? niveles;
+    List<Grado>? grados;
+    List<Grupo>? grupos;
+
+    int cicloActualId = 0;
+    int cicloProximoId = 0;
+
+    // Filtros
+    Guid? plantelId;
+    Guid? nivelId;
+    int? gradoId;
+    int? grupoId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        planteles = await Http.GetFromJsonAsync<List<Plantel>>("api/Planteles");
+        var ciclos = await Http.GetFromJsonAsync<List<CicloEscolar>>("api/Ciclos");
+
+        var actual = ciclos?.FirstOrDefault(c => c.Estatus == EstatusCiclo.Actual);
+        var proximo = ciclos?.FirstOrDefault(c => c.Estatus == EstatusCiclo.Proximo);
+
+        if (actual != null && proximo != null)
+        {
+            cicloActualId = actual.Id;
+            cicloProximoId = proximo.Id;
+            await CargarReporte();
+        }
+        else
+        {
+            resumen = new();
+        }
+    }
+
+    private async Task CargarReporte()
+    {
+        resumen = null; // Spinner
+        string query = $"api/Inscripciones/avance-reinscripcion?cicloActualId={cicloActualId}&cicloProximoId={cicloProximoId}";
+
+        if (plantelId.HasValue) query += $"&plantelId={plantelId}";
+        if (gradoId.HasValue && gradoId > 0) query += $"&gradoId={gradoId}";
+        if (grupoId.HasValue && grupoId > 0) query += $"&grupoId={grupoId}";
+
+        resumen = await Http.GetFromJsonAsync<List<ItemReporte>>(query);
+    }
+
+    // --- CASCADAS ---
+    private async Task CargarNiveles(ChangeEventArgs e)
+    {
+        if (Guid.TryParse(e.Value?.ToString(), out Guid id))
+        {
+            plantelId = id;
+            niveles = await Http.GetFromJsonAsync<List<NivelEducativo>>($"api/Niveles/plantel/{id}");
+            nivelId = null; grados = null; gradoId = null; grupos = null; grupoId = null;
+            await CargarReporte();
+        }
+        else
+        {
+            plantelId = null; await CargarReporte();
+        }
+    }
+
+    private async Task CargarGrados(ChangeEventArgs e)
+    {
+        if (Guid.TryParse(e.Value?.ToString(), out Guid id))
+        {
+            nivelId = id;
+            grados = await Http.GetFromJsonAsync<List<Grado>>($"api/Grados/nivel/{id}");
+            gradoId = null; grupos = null; grupoId = null;
+            // No recargamos reporte aquí porque filtrar por nivel solo no está en el API para no complicar,
+            // pero si quieres, podemos agregarlo. Por ahora esperamos al Grado.
+        }
+    }
+
+    private async Task CargarGrupos(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int id))
+        {
+            gradoId = id;
+            // Cargamos grupos del ciclo ACTUAL (porque filtramos donde están hoy)
+            grupos = await Http.GetFromJsonAsync<List<Grupo>>($"api/Grupos/grado/{id}/ciclo/{cicloActualId}");
+            grupoId = null;
+            await CargarReporte();
+        }
+        else
+        {
+            gradoId = null; await CargarReporte();
+        }
+    }
+
+    private async Task FiltrarPorGrupo(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int id)) grupoId = id;
+        else grupoId = null;
+
+        await CargarReporte();
+    }
+
+    string Porcentaje(int parte, int total) => total == 0 ? "0" : ((double)parte / total * 100).ToString("N1");
+}

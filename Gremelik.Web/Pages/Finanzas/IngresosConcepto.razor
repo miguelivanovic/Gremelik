@@ -1,0 +1,161 @@
+﻿@page "/finanzas/ingresos-concepto"
+@using Gremelik.core.DTOs
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin")]
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<div class="container-fluid pb-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3><i class="bi bi-pie-chart-fill text-primary"></i> Ingresos por Concepto</h3>
+    </div>
+
+    <div class="card shadow-sm mb-4 border-0 bg-light">
+        <div class="card-body d-flex gap-3 align-items-end">
+            <div>
+                <label class="fw-bold text-muted small">Fecha Inicio:</label>
+                <input type="date" class="form-control" @bind="fechaInicio" />
+            </div>
+            <div>
+                <label class="fw-bold text-muted small">Fecha Fin:</label>
+                <input type="date" class="form-control" @bind="fechaFin" />
+            </div>
+            <button class="btn btn-primary fw-bold px-4" @onclick="CargarReporte">
+                <i class="bi bi-search"></i> Consultar
+            </button>
+        </div>
+    </div>
+
+    @if (cargando)
+    {
+        <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+    }
+    else if (reporte == null)
+    {
+        <div class="alert alert-danger">Error al cargar el reporte financiero.</div>
+    }
+    else
+    {
+        <div class="row">
+            <div class="col-md-4 mb-4">
+                <div class="card shadow-sm border-primary h-100 bg-primary text-white">
+                    <div class="card-body text-center d-flex flex-column justify-content-center">
+                        <h6 class="text-uppercase mb-2 opacity-75">Ingreso Total del Periodo</h6>
+                        <h1 class="mb-0 fw-bold">$@reporte.Sum(x => x.TotalCobrado).ToString("N2")</h1>
+                        <small>Distribuidos en @reporte.Sum(x => x.CantidadOperaciones) pagos</small>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-8 mb-4">
+                <div class="card shadow-sm border-0">
+                    <div class="card-header bg-white fw-bold d-flex justify-content-between align-items-center">
+                        <span>Desglose Analítico</span>
+                        <button class="btn btn-sm btn-outline-success" @onclick="ExportarExcel" disabled="@(!reporte.Any())">
+                            <i class="bi bi-file-earmark-excel"></i> Exportar
+                        </button>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Concepto Cobrado</th>
+                                        <th class="text-center">Operaciones</th>
+                                        <th class="text-end">Total Recaudado</th>
+                                        <th class="text-end">% del Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @if (!reporte.Any())
+                                    {
+                                        <tr><td colspan="4" class="text-center py-4 text-muted">No hay ingresos registrados en este rango de fechas.</td></tr>
+                                    }
+                                    else
+                                    {
+                                        var granTotal = reporte.Sum(x => x.TotalCobrado);
+
+                                        @foreach (var item in reporte)
+                                        {
+                                            var porcentaje = granTotal > 0 ? (item.TotalCobrado / granTotal) * 100 : 0;
+
+                                            <tr>
+                                                <td class="fw-bold text-dark">@item.Concepto</td>
+                                                <td class="text-center"><span class="badge bg-secondary rounded-pill">@item.CantidadOperaciones</span></td>
+                                                <td class="text-end fw-bold text-primary">$@item.TotalCobrado.ToString("N2")</td>
+                                                <td class="text-end">
+                                                    <div class="d-flex align-items-center justify-content-end gap-2">
+                                                        <span>@porcentaje.ToString("0.0")%</span>
+                                                        <div class="progress" style="width: 50px; height: 6px;">
+                                                            <div class="progress-bar bg-primary" role="progressbar" style="width: @porcentaje.ToString("0")%"></div>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        }
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    DateTime fechaInicio = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1); // Primer día del mes por defecto
+    DateTime fechaFin = DateTime.Today; // Hoy por defecto
+
+    List<IngresoPorConceptoDto>? reporte;
+    bool cargando = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarReporte();
+    }
+
+    async Task CargarReporte()
+    {
+        cargando = true;
+        try
+        {
+            var fInicio = fechaInicio.ToString("yyyy-MM-dd");
+            var fFin = fechaFin.ToString("yyyy-MM-dd");
+
+            reporte = await Http.GetFromJsonAsync<List<IngresoPorConceptoDto>>($"api/ReportesFinancieros/ingresos-concepto?fechaInicio={fInicio}&fechaFin={fFin}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error: {ex.Message}");
+            reporte = null;
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    private async Task ExportarExcel()
+    {
+        var fInicio = fechaInicio.ToString("yyyy-MM-dd");
+        var fFin = fechaFin.ToString("yyyy-MM-dd");
+        var url = $"api/ReportesFinancieros/ingresos-concepto/excel?fechaInicio={fInicio}&fechaFin={fFin}";
+
+        try
+        {
+            // 1. Descargamos los bytes del Excel usando tu HttpClient autorizado
+            var fileBytes = await Http.GetByteArrayAsync(url);
+
+            // 2. Lo convertimos a formato Base64 para mandarlo al navegador
+            var base64 = Convert.ToBase64String(fileBytes);
+
+            // 3. Disparamos la función JavaScript que acabamos de crear
+            await JS.InvokeVoidAsync("descargarExcelBase64", $"Reporte_Ingresos_{fInicio}.xlsx", base64);
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error al generar el Excel: {ex.Message}");
+        }
+    }
+}

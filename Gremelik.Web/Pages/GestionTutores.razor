@@ -1,0 +1,270 @@
+﻿@page "/alumnos/tutores"
+@using Gremelik.core.Entities
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin")]
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<div class="container-fluid pb-5">
+    <h3 class="mb-4">👨‍👩‍👧‍👦 Gestión de Familias y Tutores</h3>
+
+    <div class="row">
+        <div class="col-md-5">
+            <div class="card shadow-sm border-primary">
+                <div class="card-header bg-primary text-white fw-bold">1. Buscar Alumno</div>
+                <div class="card-body">
+                    <div class="input-group mb-3">
+                        <input type="text" class="form-control" placeholder="Matrícula o Nombre..." @bind="textoBusqueda" @onkeyup="@EnterBuscar" />
+                        <button class="btn btn-primary" @onclick="BuscarAlumno"><i class="bi bi-search"></i></button>
+                    </div>
+
+                    @if (resultadosBusqueda != null)
+                    {
+                        <div class="list-group">
+                            @foreach (var a in resultadosBusqueda)
+                            {
+                                <button class="list-group-item list-group-item-action" @onclick="() => SeleccionarAlumno(a)">
+                                    <strong>@a.PrimerApellido @a.SegundoApellido @a.Nombre</strong> <br />
+                                    <small class="text-muted">@a.Matricula</small>
+                                </button>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-7">
+            @if (alumnoSeleccionado != null)
+            {
+                <div class="card shadow-sm h-100 border-success">
+                    <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                        <span class="fw-bold">Tutores de: @alumnoSeleccionado.Nombre</span>
+                        <button class="btn btn-sm btn-light text-success fw-bold" @onclick="AbrirModalNuevoTutor">
+                            <i class="bi bi-person-plus-fill"></i> Agregar Tutor
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        @if (tutoresAlumno == null)
+                        {
+                            <div class="spinner-border text-success"></div>
+                        }
+                        else if (!tutoresAlumno.Any())
+                        {
+                            <div class="alert alert-warning">Este alumno no tiene tutores registrados.</div>
+                        }
+                        else
+                        {
+                            <div class="list-group">
+                                @foreach (var t in tutoresAlumno)
+                                {
+                                    <div class="list-group-item">
+                                        <div class="d-flex justify-content-between align-items-start">
+                                            <div>
+                                                <h5 class="mb-1 text-primary fw-bold">@t.Nombre @t.PrimerApellido @t.SegundoApellido</h5>
+                                                <span class="badge bg-secondary mb-2">Tutor Registrado</span>
+                                            </div>
+                                            <div>
+                                                <button class="btn btn-sm btn-outline-primary me-1" title="Editar" @onclick="() => EditarTutor(t)">
+                                                    <i class="bi bi-pencil-fill"></i>
+                                                </button>
+                                                <button class="btn btn-sm btn-outline-danger" title="Eliminar" @onclick="() => EliminarTutor(t.Id)">
+                                                    <i class="bi bi-trash-fill"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div class="bg-light p-2 rounded small">
+                                            <strong>RFC:</strong> @(string.IsNullOrEmpty(t.RFC) ? "No capturado" : t.RFC) <br />
+                                            <strong>Régimen:</strong> @(string.IsNullOrEmpty(t.RegimenFiscal) ? "N/A" : t.RegimenFiscal) <br />
+                                            <strong>CP:</strong> @(string.IsNullOrEmpty(t.CodigoPostal) ? "N/A" : t.CodigoPostal)
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="text-center text-muted mt-5">
+                    <i class="bi bi-arrow-left-circle display-4"></i>
+                    <p>Selecciona un alumno para ver o editar a sus tutores.</p>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@if (mostrarModal)
+{
+    <div class="modal d-block" style="background: rgba(0,0,0,0.5)">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header @(editando ? "bg-primary" : "bg-dark") text-white">
+                    <h5 class="modal-title">@(editando ? "Editar Tutor" : "Registrar Nuevo Tutor")</h5>
+                    <button class="btn-close btn-close-white" @onclick="()=>mostrarModal=false"></button>
+                </div>
+                <div class="modal-body">
+                    <EditForm Model="@tutorActual" OnSubmit="GuardarTutor">
+                        <div class="row">
+                            <div class="col-md-4 mb-3"><label class="fw-bold">Nombre(s) *</label><InputText class="form-control" @bind-Value="tutorActual.Nombre" required /></div>
+                            <div class="col-md-4 mb-3"><label class="fw-bold">Primer Apellido *</label><InputText class="form-control" @bind-Value="tutorActual.PrimerApellido" required /></div>
+                            <div class="col-md-4 mb-3"><label class="fw-bold">Segundo Apellido</label><InputText class="form-control" @bind-Value="tutorActual.SegundoApellido" /></div>
+                        </div>
+
+                        <hr />
+                        <h6 class="text-primary fw-bold"><i class="bi bi-receipt"></i> Datos de Facturación (Opcional)</h6>
+
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="fw-bold">RFC</label>
+                                <InputText class="form-control text-uppercase" @bind-Value="tutorActual.RFC" placeholder="Ej: XAXX010101000" maxlength="13" />
+                            </div>
+                            <div class="col-md-5 mb-3">
+                                <label class="fw-bold">Régimen Fiscal</label>
+                                <InputSelect class="form-select" @bind-Value="tutorActual.RegimenFiscal">
+                                    <option value="">-- Seleccionar --</option>
+                                    <option value="601">601 - General de Ley Personas Morales</option>
+                                    <option value="605">605 - Sueldos y Salarios e Ingresos Asimilados</option>
+                                    <option value="612">612 - Personas Físicas con Actividades Empresariales y Profesionales</option>
+                                    <option value="626">626 - Régimen Simplificado de Confianza (RESICO)</option>
+                                </InputSelect>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="fw-bold">Código Postal</label>
+                                <InputText class="form-control" @bind-Value="tutorActual.CodigoPostal" maxlength="5" />
+                            </div>
+                        </div>
+
+                        @if (!editando)
+                        {
+                            <div class="mb-3 p-3 bg-light rounded border">
+                                <label class="fw-bold text-success">Parentesco con el Alumno *</label>
+                                <select class="form-select border-success" @bind="parentesco" required>
+                                    <option value="">-- Seleccionar --</option>
+                                    <option value="Padre">Padre</option>
+                                    <option value="Madre">Madre</option>
+                                    <option value="Tutor">Tutor Legal</option>
+                                    <option value="Familiar">Familiar (Tío, Abuelo, etc)</option>
+                                </select>
+                            </div>
+                        }
+
+                        <button type="submit" class="btn @(editando ? "btn-primary" : "btn-success") w-100 shadow mt-3">
+                            @(editando ? "Guardar Cambios" : "Guardar y Vincular")
+                        </button>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    string textoBusqueda = "";
+    List<Alumno>? resultadosBusqueda;
+    Alumno? alumnoSeleccionado;
+    List<Tutor>? tutoresAlumno;
+
+    // Variables para el Modal
+    bool mostrarModal = false;
+    bool editando = false;
+    Tutor tutorActual = new() { Nombre = "", PrimerApellido = "", RFC = "", Usuario = "" };
+    string parentesco = "";
+
+    async Task BuscarAlumno()
+    {
+        if (string.IsNullOrWhiteSpace(textoBusqueda)) return;
+        resultadosBusqueda = await Http.GetFromJsonAsync<List<Alumno>>($"api/Alumnos/buscar/{textoBusqueda}");
+    }
+
+    async Task EnterBuscar(KeyboardEventArgs e) { if (e.Key == "Enter") await BuscarAlumno(); }
+
+    async Task SeleccionarAlumno(Alumno a)
+    {
+        alumnoSeleccionado = a;
+        await CargarTutores();
+    }
+
+    async Task CargarTutores()
+    {
+        if (alumnoSeleccionado == null) return;
+        tutoresAlumno = await Http.GetFromJsonAsync<List<Tutor>>($"api/Caja/tutores/{alumnoSeleccionado.Id}");
+    }
+
+    // --- ACCIONES CRUD ---
+
+    void AbrirModalNuevoTutor()
+    {
+        tutorActual = new() { Nombre = "", PrimerApellido = "", RFC = "", Usuario = "" };
+        parentesco = "Madre";
+        editando = false;
+        mostrarModal = true;
+    }
+
+    void EditarTutor(Tutor t)
+    {
+        // Clonamos el objeto para no editar en vivo la lista visual hasta que le de "Guardar"
+        tutorActual = new Tutor
+            {
+                Id = t.Id,
+                Nombre = t.Nombre,
+                PrimerApellido = t.PrimerApellido,
+                SegundoApellido = t.SegundoApellido,
+                RFC = t.RFC,
+                RegimenFiscal = t.RegimenFiscal,
+                CodigoPostal = t.CodigoPostal,
+                Usuario = "" // Se asigna en el backend
+            };
+        editando = true;
+        mostrarModal = true;
+    }
+
+    async Task GuardarTutor()
+    {
+        if (!editando && string.IsNullOrEmpty(parentesco))
+        {
+            await JS.InvokeVoidAsync("alert", "Selecciona el parentesco para poder vincularlo.");
+            return;
+        }
+
+        if (editando)
+        {
+            // PUT: Actualizar existente
+            var res = await Http.PutAsJsonAsync($"api/Tutores/{tutorActual.Id}", tutorActual);
+            if (res.IsSuccessStatusCode)
+            {
+                mostrarModal = false;
+                await CargarTutores();
+            }
+        }
+        else
+        {
+            // POST: Crear nuevo y vincular
+            var res = await Http.PostAsJsonAsync("api/Tutores", tutorActual);
+            if (res.IsSuccessStatusCode)
+            {
+                var tutorGuardado = await res.Content.ReadFromJsonAsync<Tutor>();
+                await Http.PostAsJsonAsync($"api/Tutores/{tutorGuardado!.Id}/vincular/{alumnoSeleccionado!.Id}", parentesco);
+                mostrarModal = false;
+                await CargarTutores();
+            }
+        }
+    }
+
+    async Task EliminarTutor(Guid id)
+    {
+        if (await JS.InvokeAsync<bool>("confirm", "⚠️ ¿Estás seguro de quitar a este tutor?\n\nNo se borrará de los recibos históricos, pero ya no aparecerá en la caja."))
+        {
+            var res = await Http.DeleteAsync($"api/Tutores/{id}");
+            if (res.IsSuccessStatusCode)
+            {
+                await CargarTutores();
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("alert", "Error al eliminar.");
+            }
+        }
+    }
+}

@@ -1,0 +1,249 @@
+﻿@page "/configuracion/costos"
+@using Gremelik.core.Entities
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin")]
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<div class="container-fluid">
+    <h3>🏷️ Lista de Precios de Inscripción</h3>
+    <p class="text-muted">Define cuánto cuesta inscribirse en cada ciclo.</p>
+
+    <div class="card mb-4">
+        <div class="card-body d-flex align-items-center gap-3">
+            <label class="fw-bold">Ciclo Escolar:</label>
+            <select class="form-select w-auto" value="@cicloSeleccionadoId" @onchange="CargarCostos">
+                <option value="0">-- Selecciona un Ciclo --</option>
+                @if (ciclos != null)
+                {
+                    @foreach (var c in ciclos)
+                    {
+                        <option value="@c.Id">@c.Nombre @(c.Actual ? "(Actual)" : "")</option>
+                    }
+                }
+            </select>
+        </div>
+    </div>
+
+    @if (cicloSeleccionadoId != 0)
+    {
+        <div class="row">
+            <div class="col-md-4">
+                <div class="card shadow-sm border-primary">
+                    <div class="card-header bg-primary text-white">Nuevo Precio</div>
+                    <div class="card-body">
+                        <EditForm Model="@nuevoCosto" OnSubmit="GuardarCosto">
+                            <div class="mb-3">
+                                <label>Nivel Educativo</label>
+                                <select class="form-select" @onchange="CargarGrados" required>
+                                    <option value="">-- Selecciona Nivel --</option>
+                                    @if (niveles != null)
+                                    {
+                                        @foreach (var n in niveles) { <option value="@n.Id">@n.Nombre</option> }
+                                    }
+                                </select>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label>Grado (Opcional)</label>
+                                <select class="form-select" @bind="nuevoCosto.GradoId" disabled="@(grados == null)">
+                                    <option value="">-- Aplica a TODO el nivel --</option>
+                                    @if (grados != null)
+                                    {
+                                        @foreach (var g in grados) { <option value="@g.Id">@g.Nombre</option> }
+                                    }
+                                </select>
+                                <small class="text-muted" style="font-size:0.8em">Si lo dejas vacío, el precio aplica para todo el nivel.</small>
+                            </div>
+
+                            <div class="mb-3">
+                                <label>Monto ($)</label>
+                                <input type="number" class="form-control fw-bold" @bind="nuevoCosto.Monto" required />
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label>Concepto</label>
+                                <input type="text" class="form-control" @bind="nuevoCosto.Concepto" />
+                            </div>
+
+                            <button type="submit" class="btn btn-primary w-100">Guardar Precio</button>
+                        </EditForm>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-body">
+                        @if (listaCostos == null)
+                        {
+                            <p>Cargando precios...</p>
+                        }
+                        else if (!listaCostos.Any())
+                        {
+                            <div class="alert alert-warning">No hay precios configurados para este ciclo.</div>
+                        }
+                        else
+                        {
+                            <table class="table table-hover">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Nivel / Grado</th>
+                                        <th>Concepto</th>
+                                        <th class="text-end">Monto</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var costo in listaCostos)
+                                    {
+                                        <tr>
+                                            <td>
+                                                @if (costo.Grado != null)
+                                                {
+                                                    <strong>@costo.Grado.Nombre</strong> <small class="text-muted">(@costo.NivelEducativo?.Nombre)</small>
+                                                }
+                                                else
+                                                {
+                                                    <span class="badge bg-info text-dark">Todo @costo.NivelEducativo?.Nombre</span>
+                                                }
+                                            </td>
+                                            <td>@costo.Concepto</td>
+                                            <td class="text-end fw-bold text-success">$@costo.Monto.ToString("N2")</td>
+                                            <td class="text-end">
+                                                <button class="btn btn-sm btn-outline-danger" @onclick="() => Eliminar(costo.Id)">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    // Listas inicializadas para evitar nulls
+    List<CicloEscolar> ciclos = new();
+    List<NivelEducativo> niveles = new();
+    List<Grado> grados = new();
+    List<CostoInscripcion> listaCostos = new();
+
+    // Estado
+    int cicloSeleccionadoId = 0;
+    Guid nivelSeleccionadoId = Guid.Empty; // Guid vacío por defecto
+
+    // Inicializamos el objeto para que no sea null
+    CostoInscripcion nuevoCosto = new()
+        {
+            Monto = 0,
+            Concepto = "Inscripción Anual",
+            Usuario = ""
+        };
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Cargar ciclos
+            ciclos = await Http.GetFromJsonAsync<List<CicloEscolar>>("api/Ciclos") ?? new();
+
+            // Cargar niveles (Asumiendo que hay planteles)
+            var planteles = await Http.GetFromJsonAsync<List<Plantel>>("api/Planteles");
+            if (planteles != null && planteles.Any())
+            {
+                // Carga los niveles del primer plantel para llenar el select
+                niveles = await Http.GetFromJsonAsync<List<NivelEducativo>>($"api/Niveles/plantel/{planteles.First().Id}") ?? new();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Error cargando datos iniciales: " + ex.Message);
+        }
+    }
+
+    private async Task CargarCostos(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int id) && id != 0)
+        {
+            cicloSeleccionadoId = id;
+            try
+            {
+                listaCostos = await Http.GetFromJsonAsync<List<CostoInscripcion>>($"api/CostosInscripcion/ciclo/{id}") ?? new();
+            }
+            catch { listaCostos = new(); }
+        }
+    }
+
+    private async Task CargarGrados(ChangeEventArgs e)
+    {
+        if (Guid.TryParse(e.Value?.ToString(), out Guid id))
+        {
+            nivelSeleccionadoId = id;
+            nuevoCosto.NivelEducativoId = id; // Asignamos al modelo
+
+            try
+            {
+                grados = await Http.GetFromJsonAsync<List<Grado>>($"api/Grados/nivel/{id}") ?? new();
+            }
+            catch { grados = new(); }
+        }
+    }
+
+    private async Task GuardarCosto()
+    {
+        if (cicloSeleccionadoId == 0)
+        {
+            await JS.InvokeVoidAsync("alert", "Selecciona un ciclo escolar primero.");
+            return;
+        }
+        if (nuevoCosto.NivelEducativoId == null)
+        { // Validación extra
+            await JS.InvokeVoidAsync("alert", "Selecciona un nivel educativo.");
+            return;
+        }
+
+        nuevoCosto.CicloEscolarId = cicloSeleccionadoId;
+
+        // Limpiamos el ID del Grado si el usuario seleccionó la opción "Todos" (vacía)
+        if (nuevoCosto.GradoId == 0) nuevoCosto.GradoId = null;
+
+        var res = await Http.PostAsJsonAsync("api/CostosInscripcion", nuevoCosto);
+        if (res.IsSuccessStatusCode)
+        {
+            // Recargar tabla
+            listaCostos = await Http.GetFromJsonAsync<List<CostoInscripcion>>($"api/CostosInscripcion/ciclo/{cicloSeleccionadoId}") ?? new();
+
+            // Reiniciar formulario
+            nuevoCosto = new()
+                {
+                    Monto = 0,
+                    Concepto = "Inscripción Anual",
+                    CicloEscolarId = cicloSeleccionadoId,
+                    Usuario = ""
+                };
+            // Forzamos la UI a actualizarse
+            StateHasChanged();
+        }
+        else
+        {
+            var msg = await res.Content.ReadAsStringAsync();
+            await JS.InvokeVoidAsync("alert", "Error al guardar: " + msg);
+        }
+    }
+
+    private async Task Eliminar(Guid id)
+    {
+        if (await JS.InvokeAsync<bool>("confirm", "¿Borrar este precio?"))
+        {
+            await Http.DeleteAsync($"api/CostosInscripcion/{id}");
+            // Recargar
+            listaCostos = await Http.GetFromJsonAsync<List<CostoInscripcion>>($"api/CostosInscripcion/ciclo/{cicloSeleccionadoId}") ?? new();
+        }
+    }
+}

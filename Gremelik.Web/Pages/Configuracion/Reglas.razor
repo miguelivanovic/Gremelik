@@ -1,0 +1,263 @@
+﻿@page "/configuracion/reglas"
+@using Gremelik.core.Entities
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin")]
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<div class="container-fluid">
+    <h3>🎁 Reglas de Descuento y Becas</h3>
+    <p class="text-muted">Configura promociones automáticas para las inscripciones.</p>
+
+    <div class="card mb-4">
+        <div class="card-body d-flex align-items-center gap-3">
+            <label class="fw-bold">Ciclo Escolar:</label>
+            <select class="form-select w-auto" value="@cicloSeleccionadoId" @onchange="CargarReglas">
+                <option value="0">-- Selecciona --</option>
+                @if (ciclos != null)
+                {
+                    @foreach (var c in ciclos)
+                    {
+                        <option value="@c.Id">@c.Nombre @(c.Actual ? "(Actual)" : "")</option>
+                    }
+                }
+            </select>
+        </div>
+    </div>
+
+    @if (cicloSeleccionadoId != 0)
+    {
+        <div class="row">
+            <div class="col-md-5">
+                <div class="card shadow-sm border-success">
+                    <div class="card-header bg-success text-white">
+                        @(editando ? "Editar Regla" : "Nueva Regla")
+                    </div>
+                    <div class="card-body">
+                        <EditForm Model="@reglaActual" OnSubmit="GuardarRegla">
+
+                            <div class="mb-3">
+                                <label>Nombre de la Promoción</label>
+                                <input class="form-control" @bind="reglaActual.Nombre" placeholder="Ej: Pronto Pago Febrero" required />
+                            </div>
+
+                            <div class="mb-3">
+                                <label>Tipo de Regla</label>
+                                <select class="form-select" @bind="reglaActual.Tipo">
+                                    <option value="@TipoDescuento.FechaLimite">📅 Por Fecha (Pronto Pago)</option>
+                                    <option value="@TipoDescuento.NuevoIngreso">🆕 Solo Nuevo Ingreso</option>
+                                    <option value="@TipoDescuento.Reingreso">🔄 Solo Reingreso</option>
+                                    <option value="@TipoDescuento.Hermanos">👨‍👩‍👦 Por Hermanos</option>
+                                    <option value="@TipoDescuento.Manual">🖐️ Manual / Especial</option>
+                                </select>
+                            </div>
+
+                            <div class="row mb-3">
+                                <div class="col-6">
+                                    <label>Descuento %</label>
+                                    <div class="input-group">
+                                        <input type="number" class="form-control" @bind="reglaActual.Porcentaje" step="0.5" />
+                                        <span class="input-group-text">%</span>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <label>Descuento Fijo ($)</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text">$</span>
+                                        <input type="number" class="form-control" @bind="reglaActual.MontoFijo" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="alert alert-light border mt-3">
+                                <div class="d-flex justify-content-between">
+                                    <small class="fw-bold">📅 Vigencia (Opcional)</small>
+                                    <small class="text-muted" style="font-size:0.7em">Dejar vacío si es permanente</small>
+                                </div>
+
+                                <div class="row g-2 mt-1">
+                                    <div class="col-6">
+                                        <label class="small">Desde:</label>
+                                        <input type="date" class="form-control form-control-sm" @bind="reglaActual.FechaInicioValidez" />
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="small">Hasta:</label>
+                                        <input type="date" class="form-control form-control-sm" @bind="reglaActual.FechaFinValidez" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="d-flex justify-content-end gap-2 mt-3">
+                                @if (editando)
+                                {
+                                    <button type="button" class="btn btn-secondary" @onclick="CancelarEdicion">Cancelar</button>
+                                }
+                                <button type="submit" class="btn btn-success">Guardar Regla</button>
+                            </div>
+
+                        </EditForm>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-7">
+                <div class="card">
+                    <div class="card-body p-0">
+                        @if (listaReglas == null)
+                        {
+                            <div class="p-3">Cargando...</div>
+                        }
+                        else if (!listaReglas.Any())
+                        {
+                            <div class="p-3 alert alert-warning m-3">No hay reglas activas. Se cobrará el precio lleno.</div>
+                        }
+                        else
+                        {
+                            <table class="table table-hover mb-0 align-middle">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Nombre</th>
+                                        <th>Beneficio</th>
+                                        <th>Vigencia</th>
+                                        <th>Estado</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var r in listaReglas)
+                                    {
+                                        <tr class="@(!r.Activo ? "opacity-50" : "")">
+                                            <td>
+                                                <strong>@r.Nombre</strong><br />
+                                                <small class="text-muted">@r.Tipo</small>
+                                            </td>
+                                            <td class="text-success fw-bold">
+                                                @(r.Porcentaje > 0 ? $"-{r.Porcentaje}%" : "")
+                                                @(r.MontoFijo > 0 ? $" -${r.MontoFijo}" : "")
+                                            </td>
+                                            <td>
+                                                @if (r.Tipo == TipoDescuento.FechaLimite)
+                                                {
+                                                    <small>@r.FechaInicioValidez?.ToString("dd/MMM") - @r.FechaFinValidez?.ToString("dd/MMM")</small>
+                                                }
+                                                else
+                                                {
+                                                    <small>-</small>
+                                                }
+                                            </td>
+                                            <td>
+                                                <div class="form-check form-switch">
+                                                    <input class="form-check-input" type="checkbox" checked="@r.Activo" @onclick="() => ToggleRegla(r.Id)">
+                                                </div>
+                                            </td>
+                                            <td class="text-end">
+                                                <button class="btn btn-sm btn-link" @onclick="() => Editar(r)">✏️</button>
+                                                <button class="btn btn-sm btn-link text-danger" @onclick="() => Eliminar(r.Id)">🗑️</button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    List<CicloEscolar>? ciclos;
+    List<ReglaDescuento>? listaReglas;
+
+    int cicloSeleccionadoId = 0;
+    bool editando = false;
+
+    // Inicializamos objeto
+    ReglaDescuento reglaActual = new()
+        {
+            Nombre = "",
+            Usuario = "",
+            Tipo = TipoDescuento.FechaLimite
+        };
+
+    protected override async Task OnInitializedAsync()
+    {
+        ciclos = await Http.GetFromJsonAsync<List<CicloEscolar>>("api/Ciclos");
+    }
+
+    private async Task CargarReglas(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int id) && id != 0)
+        {
+            cicloSeleccionadoId = id;
+            await RecargarTabla();
+            CancelarEdicion();
+        }
+    }
+
+    private async Task RecargarTabla()
+    {
+        listaReglas = await Http.GetFromJsonAsync<List<ReglaDescuento>>($"api/ReglasDescuento/ciclo/{cicloSeleccionadoId}") ?? new();
+    }
+
+    private async Task GuardarRegla()
+    {
+        if (cicloSeleccionadoId == 0) return;
+
+        reglaActual.CicloEscolarId = cicloSeleccionadoId;
+
+        var res = await Http.PostAsJsonAsync("api/ReglasDescuento", reglaActual);
+
+        if (res.IsSuccessStatusCode)
+        {
+            await RecargarTabla();
+            CancelarEdicion();
+        }
+        else
+        {
+            var msg = await res.Content.ReadAsStringAsync();
+            await JS.InvokeVoidAsync("alert", "Error: " + msg);
+        }
+    }
+
+    private void Editar(ReglaDescuento r)
+    {
+        // Clonamos para no editar directamente en la tabla hasta guardar
+        reglaActual = new ReglaDescuento
+            {
+                Id = r.Id,
+                Nombre = r.Nombre,
+                Tipo = r.Tipo,
+                Porcentaje = r.Porcentaje,
+                MontoFijo = r.MontoFijo,
+                FechaInicioValidez = r.FechaInicioValidez,
+                FechaFinValidez = r.FechaFinValidez,
+                Activo = r.Activo,
+                Usuario = r.Usuario,
+                CicloEscolarId = r.CicloEscolarId
+            };
+        editando = true;
+    }
+
+    private void CancelarEdicion()
+    {
+        reglaActual = new() { Nombre = "", Usuario = "", Tipo = TipoDescuento.FechaLimite, CicloEscolarId = cicloSeleccionadoId };
+        editando = false;
+    }
+
+    private async Task Eliminar(Guid id)
+    {
+        if (await JS.InvokeAsync<bool>("confirm", "¿Eliminar esta regla?"))
+        {
+            await Http.DeleteAsync($"api/ReglasDescuento/{id}");
+            await RecargarTabla();
+        }
+    }
+
+    private async Task ToggleRegla(Guid id)
+    {
+        await Http.PutAsync($"api/ReglasDescuento/toggle/{id}", null);
+        // No recargamos toda la tabla para que sea fluido, el switch visual ya cambió
+    }
+}
