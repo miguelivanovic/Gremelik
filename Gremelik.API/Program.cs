@@ -9,24 +9,25 @@ using Microsoft.AspNetCore.Identity; // Para Identity
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens; // Para validar el Token
 
+
 var builder = WebApplication.CreateBuilder(args);
 
-// 1. Configuración de CORS (Permitir que Blazor hable con la API)
+// 1. Configuraciï¿½n de CORS (Permitir que Blazor hable con la API)
 builder.Services.AddCors(options => {
     options.AddPolicy("PermitirBlazor", policy => {
         policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader();
     });
 });
 
-// 2. Configuración de Base de Datos
+// 2. Configuraciï¿½n de Base de Datos
 builder.Services.AddDbContext<GremelikDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// 3. CONFIGURACIÓN DE IDENTITY (Usuarios y Roles)
-// Esto conecta tus tablas de usuarios con la lógica de seguridad
+// 3. CONFIGURACIï¿½N DE IDENTITY (Usuarios y Roles)
+// Esto conecta tus tablas de usuarios con la lï¿½gica de seguridad
 builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
 {
-    // Relajamos las reglas de contraseña para desarrollo
+    // Relajamos las reglas de contraseï¿½a para desarrollo
     options.Password.RequireDigit = false;
     options.Password.RequireLowercase = false;
     options.Password.RequireUppercase = false;
@@ -37,8 +38,8 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
 .AddEntityFrameworkStores<GremelikDbContext>()
 .AddDefaultTokenProviders();
 
-// 4. CONFIGURACIÓN DE JWT (El Pasaporte Digital)
-// Aquí le decimos cómo validar el token que envía el Frontend
+// 4. CONFIGURACIï¿½N DE JWT (El Pasaporte Digital)
+// Aquï¿½ le decimos cï¿½mo validar el token que envï¿½a el Frontend
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -61,11 +62,11 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
-// 5. Configuración de Controladores y JSON
+// 5. Configuraciï¿½n de Controladores y JSON
 builder.Services.AddControllers()
     .AddJsonOptions(x => x.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles);
 
-// 6. Swagger (Documentación)
+// 6. Swagger (Documentaciï¿½n)
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
@@ -95,7 +96,7 @@ using (var scope = app.Services.CreateScope())
 }
 // --- FIN: SEMBRADOR DE DATOS ---
 
-// --- PIPELINE DE PETICIONES (El orden importa mucho aquí) ---
+// --- PIPELINE DE PETICIONES (El orden importa mucho aquï¿½) ---
 
 if (app.Environment.IsDevelopment())
 {
@@ -107,14 +108,14 @@ app.UseCors("PermitirBlazor");
 
 app.UseHttpsRedirection(); // Recomendado tenerlo
 
-// IMPORTANTE: Primero Autenticación (¿Quién eres?), luego Autorización (¿Qué puedes hacer?)
+// IMPORTANTE: Primero Autenticaciï¿½n (ï¿½Quiï¿½n eres?), luego Autorizaciï¿½n (ï¿½Quï¿½ puedes hacer?)
 app.UseAuthentication();
 app.UseAuthorization();
 
-// El Middleware de Tenant va aquí para interceptar el Header X-Tenant-ID
+// El Middleware de Tenant va aquï¿½ para interceptar el Header X-Tenant-ID
 app.UseMiddleware<TenantMiddleware>();
 
-app.UseStaticFiles(); // ESTO ES VITAL: Permite que el navegador pueda ver las imágenes guardadas
+app.UseStaticFiles(); // ESTO ES VITAL: Permite que el navegador pueda ver las imï¿½genes guardadas
 
 app.MapControllers();
 

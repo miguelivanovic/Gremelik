@@ -1,21 +1,21 @@
 { pkgs, ... }: {
-  # Usamos el canal estable de Nix
+  # Canal de paquetes de NixOS
   channel = "stable-23.11"; 
 
-  # Aquí instalamos .NET 8
+  # Aquí le decimos a la máquina virtual qué programas instalar
   packages = [
     pkgs.dotnet-sdk_8
-    pkgs.powershell
+    pkgs.google-cloud-sdk
+    pkgs.google-cloud-sql-proxy
   ];
 
-  # Configuraciones de IDX
+  # Variables de entorno (vacías por ahora)
+  env = {};
+  
   idx = {
-    # Extensiones para Visual Studio Code (C#)
+    # Extensiones del editor para ayudarte con C#
     extensions = [
       "muhammad-sammy.csharp"
     ];
-    
-    # Vista previa (opcional, por ahora vacía)
-    previews = {};
   };
 }
