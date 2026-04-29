@@ -1,0 +1,105 @@
+﻿@page "/finanzas/conciliacion"
+@using Gremelik.core.DTOs
+@using System.Net.Http.Headers
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin, Coordinador, Cajero")]
+@inject HttpClient Http
+@inject IJSRuntime JS
+@inject NavigationManager NavigationManager
+
+<div class="container-fluid pb-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3><i class="bi bi-cloud-arrow-up-fill text-primary"></i> Subir Estado de Cuenta</h3>
+    </div>
+
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card shadow border-primary mb-4">
+                <div class="card-header bg-primary text-white fw-bold">
+                    Cargar Layout del Banco
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Selecciona el Banco / Formato:</label>
+                        <select class="form-select border-primary" @bind="bancoSeleccionado">
+                            <option value="">-- Elige un Banco --</option>
+                            <option value="GENERICO_CSV">Archivo Genérico (.CSV)</option>
+                            <option value="BANORTE" disabled>Banorte (En desarrollo)</option>
+                            <option value="BBVA" disabled>BBVA (En desarrollo)</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">Archivo de Movimientos:</label>
+                        <InputFile OnChange="CargarArchivo" class="form-control" accept=".csv, .xlsx, .xls" />
+                        <small class="text-muted">El sistema detectará automáticamente a qué alumno pertenece cada depósito usando la Referencia (Matrícula).</small>
+                    </div>
+
+                    <button class="btn btn-success w-100 py-2 fw-bold shadow" @onclick="ProcesarArchivo" disabled="@(!PuedeProcesar)">
+                        @if (procesando)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2"></span> <span>Guardando en Bandeja de Revisión...</span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-save-fill me-2"></i> <span>Subir Archivo al Sistema</span>
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    string bancoSeleccionado = "";
+    IBrowserFile? archivoSeleccionado;
+    bool procesando = false;
+
+    bool PuedeProcesar => !string.IsNullOrEmpty(bancoSeleccionado) && archivoSeleccionado != null && !procesando;
+
+    private void CargarArchivo(InputFileChangeEventArgs e)
+    {
+        archivoSeleccionado = e.File;
+    }
+
+    private async Task ProcesarArchivo()
+    {
+        if (!PuedeProcesar) return;
+
+        procesando = true;
+
+        try
+        {
+            using var content = new MultipartFormDataContent();
+            var fileContent = new StreamContent(archivoSeleccionado!.OpenReadStream(1024 * 1024 * 5));
+            fileContent.Headers.ContentType = new MediaTypeHeaderValue(archivoSeleccionado.ContentType);
+
+            content.Add(fileContent, "archivo", archivoSeleccionado.Name);
+            content.Add(new StringContent(bancoSeleccionado), "banco");
+
+            var response = await Http.PostAsync("api/Conciliacion/subir-layout", content);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var resultado = await response.Content.ReadFromJsonAsync<ResultadoConciliacionDto>();
+                await JS.InvokeVoidAsync("alert", $"¡Éxito! Se guardaron {resultado?.ProcesadosExitosamente} depósitos en la bandeja.\n\nSerás redirigido a la pantalla de Conciliación Manual para revisarlos.");
+
+                // Lo mandamos a la pantalla 2 para que empiece a palomear
+                NavigationManager.NavigateTo("/finanzas/conciliacion-manual");
+            }
+            else
+            {
+                var errorMsg = await response.Content.ReadAsStringAsync();
+                await JS.InvokeVoidAsync("alert", $"Ocurrió un problema: {errorMsg}");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error de conexión: {ex.Message}");
+        }
+        finally
+        {
+            procesando = false;
+        }
+    }
+}

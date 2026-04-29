@@ -1,0 +1,290 @@
+﻿@page "/academico/reportes"
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin, Coordinador, Maestro")]
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<PageTitle>Disciplina e Incidencias</PageTitle>
+
+<div class="container-fluid pb-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h3 class="fw-bold text-dark mb-0"><i class="bi bi-person-badge text-danger me-2"></i> Reportes de Conducta</h3>
+            <span class="text-muted small">Bitácora de incidencias disciplinarias</span>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-8 offset-lg-2">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-dark text-white fw-bold">
+                    <i class="bi bi-pencil-square me-2"></i> Levantar Nuevo Reporte
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <div class="row g-2 mb-3">
+                            <div class="col-md-6">
+                                <label class="fw-bold text-muted small">Plantel:</label>
+                                <select class="form-select border-primary text-sm" value="@plantelId" @onchange="CambiarPlantel">
+                                    <option value="">-- Seleccionar --</option>
+                                    @if (planteles != null)
+                                    {
+                                        foreach (var p in planteles)
+                                        {
+                                            <option value="@p.Id">@p.Nombre</option>
+                                        }
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="fw-bold text-muted small">Nivel:</label>
+                                <select class="form-select border-primary text-sm" value="@nivelId" @onchange="CambiarNivel" disabled="@(niveles == null)">
+                                    <option value="">-- Seleccionar --</option>
+                                    @if (niveles != null)
+                                    {
+                                        foreach (var n in niveles)
+                                        {
+                                            <option value="@n.Id">@n.Nombre</option>
+                                        }
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="fw-bold text-muted small">Grado:</label>
+                                <select class="form-select border-primary text-sm" value="@gradoId" @onchange="CambiarGrado" disabled="@(grados == null)">
+                                    <option value="0">-- Seleccionar --</option>
+                                    @if (grados != null)
+                                    {
+                                        foreach (var g in grados)
+                                        {
+                                            <option value="@g.Id">@g.Nombre</option>
+                                        }
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="fw-bold text-muted small">Grupo:</label>
+                                <select class="form-select border-primary fw-bold text-sm" value="@grupoId" @onchange="CambiarGrupo" disabled="@(grupos == null)">
+                                    <option value="0">-- Seleccionar --</option>
+                                    @if (grupos != null)
+                                    {
+                                        foreach (var g in grupos)
+                                        {
+                                            <option value="@g.Id">@g.Nombre (@g.Turno)</option>
+                                        }
+                                    }
+                                </select>
+                            </div>
+                        </div>                        
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="fw-bold text-muted small">2. Alumno Implicado:</label>
+                        <select class="form-select border-primary" @bind="nuevoReporte.AlumnoId" disabled="@(alumnos == null || !alumnos.Any())">
+                            <option value="">-- Seleccionar Alumno --</option>
+                            @if (alumnos != null)
+                            {
+                                foreach (var a in alumnos)
+                                {
+                                    <option value="@a.AlumnoId">@a.NombreCompleto</option>
+                                }
+                            }
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="fw-bold text-muted small">3. Nivel de Gravedad:</label>
+                        <select class="form-select fw-bold @GetColorGravedad(nuevoReporte.Gravedad)" @bind="nuevoReporte.Gravedad">
+                            <option value="1" class="text-secondary">🔵 Leve (Llamada de atención)</option>
+                            <option value="2" class="text-warning">🟡 Moderada (Reincidencia)</option>
+                            <option value="3" class="text-danger">🔴 Grave (Citatorio / Suspensión)</option>
+                            <option value="4" class="text-dark">⚫ Muy Grave (Expulsión)</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="fw-bold text-muted small">4. Título Breve:</label>
+                        <input type="text" class="form-control" placeholder="Ej. Falta de respeto en clase" @bind="nuevoReporte.Titulo" maxlength="100" />
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="fw-bold text-muted small">5. Descripción de los hechos:</label>
+                        <textarea class="form-control" rows="4" placeholder="Describe detalladamente qué sucedió..." @bind="nuevoReporte.Descripcion"></textarea>
+                    </div>
+
+                    <button class="btn btn-danger w-100 fw-bold shadow-sm" @onclick="GuardarReporte" disabled="@guardando">
+                        @if (guardando)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2"></span>
+                        }
+                        <i class="bi bi-exclamation-triangle-fill"></i> Registrar Incidencia
+                    </button>
+                </div>
+            </div>
+        </div>        
+    </div>
+</div>
+
+@code {
+    // --- CLASES AUXILIARES ---
+    public class GrupoBasico { public int Id { get; set; } public string Nombre { get; set; } = ""; public string Turno { get; set; } = ""; }
+    public class AlumnoBasico { public Guid AlumnoId { get; set; } public string NombreCompleto { get; set; } = ""; }
+    public class CicloEscolarBasico { public int Id { get; set; } public int Estatus { get; set; } }
+
+    // Entidades base de Gremelik
+    public class PlantelBasico { public Guid Id { get; set; } public string Nombre { get; set; } = ""; }
+    public class NivelBasico { public Guid Id { get; set; } public string Nombre { get; set; } = ""; }
+    public class GradoBasico { public int Id { get; set; } public string Nombre { get; set; } = ""; }
+
+    public class ReporteDto
+    {
+        public Guid Id { get; set; }
+        public DateTime FechaIncidencia { get; set; }
+        public string Alumno { get; set; } = "";
+        public int Gravedad { get; set; }
+        public string Titulo { get; set; } = "";
+        public int Estatus { get; set; }
+        public string NombreReportador { get; set; } = "";
+    }
+
+    public class CrearReporteForm
+    {
+        public int CicloEscolarId { get; set; }
+        public Guid? AlumnoId { get; set; }
+        public int Gravedad { get; set; } = 1;
+        public string Titulo { get; set; } = "";
+        public string Descripcion { get; set; } = "";
+    }
+
+    // --- VARIABLES DE ESTADO ---
+    int cicloActualId = 0;
+
+    // Variables de la cascada
+    List<PlantelBasico>? planteles;
+    List<NivelBasico>? niveles;
+    List<GradoBasico>? grados;
+    List<GrupoBasico>? grupos;
+    List<AlumnoBasico>? alumnos;
+
+    Guid plantelId = Guid.Empty;
+    Guid nivelId = Guid.Empty;
+    int gradoId = 0;
+    int grupoId = 0;
+
+    CrearReporteForm nuevoReporte = new();
+
+    bool cargandoHistorial = true;
+    bool guardando = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // 1. Obtener Ciclo Actual
+        var ciclos = await Http.GetFromJsonAsync<List<CicloEscolarBasico>>("api/Ciclos");
+        var activo = ciclos?.FirstOrDefault(c => c.Estatus == 1);
+        if (activo != null)
+        {
+            cicloActualId = activo.Id;
+            nuevoReporte.CicloEscolarId = cicloActualId;
+            //await CargarHistorial();
+        }
+
+        // 2. Cargar Planteles (El inicio de la cascada)
+        planteles = await Http.GetFromJsonAsync<List<PlantelBasico>>("api/Planteles");
+
+        // Autoseleccionar si solo hay 1 plantel
+        if (planteles != null && planteles.Count == 1)
+        {
+            plantelId = planteles.First().Id;
+            niveles = await Http.GetFromJsonAsync<List<NivelBasico>>($"api/Niveles/plantel/{plantelId}");
+        }
+    }
+
+    // --- EVENTOS DE LA CASCADA ---
+    async Task CambiarPlantel(ChangeEventArgs e)
+    {
+        if (Guid.TryParse(e.Value?.ToString(), out Guid id))
+        {
+            plantelId = id;
+            niveles = await Http.GetFromJsonAsync<List<NivelBasico>>($"api/Niveles/plantel/{id}");
+        }
+        grados = null; grupos = null; alumnos = null;
+        nivelId = Guid.Empty; gradoId = 0; grupoId = 0; nuevoReporte.AlumnoId = null;
+    }
+
+    async Task CambiarNivel(ChangeEventArgs e)
+    {
+        if (Guid.TryParse(e.Value?.ToString(), out Guid id))
+        {
+            nivelId = id;
+            grados = await Http.GetFromJsonAsync<List<GradoBasico>>($"api/Grados/nivel/{id}");
+        }
+        grupos = null; alumnos = null;
+        gradoId = 0; grupoId = 0; nuevoReporte.AlumnoId = null;
+    }
+
+    async Task CambiarGrado(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int id) && id != 0)
+        {
+            gradoId = id;
+            grupos = await Http.GetFromJsonAsync<List<GrupoBasico>>($"api/Grupos/grado/{id}/ciclo/{cicloActualId}");
+        }
+        else { grupos = null; alumnos = null; grupoId = 0; nuevoReporte.AlumnoId = null; }
+    }
+
+    async Task CambiarGrupo(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int id) && id != 0)
+        {
+            grupoId = id;
+            nuevoReporte.AlumnoId = null;
+            alumnos = await Http.GetFromJsonAsync<List<AlumnoBasico>>($"api/Asistencias/alumnos-filtro?grupoId={grupoId}");
+        }
+        else
+        {
+            grupoId = 0;
+            alumnos = null;
+            nuevoReporte.AlumnoId = null;
+        }
+    }
+
+    // --- MÉTODOS DE DATOS --- 
+
+    private async Task GuardarReporte()
+    {
+        if (nuevoReporte.AlumnoId == null || string.IsNullOrWhiteSpace(nuevoReporte.Titulo) || string.IsNullOrWhiteSpace(nuevoReporte.Descripcion))
+        {
+            await JS.InvokeVoidAsync("alert", "Por favor llena todos los campos: Alumno, Título y Descripción.");
+            return;
+        }
+
+        guardando = true;
+        var res = await Http.PostAsJsonAsync("api/ReportesConducta", nuevoReporte);
+        guardando = false;
+
+        if (res.IsSuccessStatusCode)
+        {
+            await JS.InvokeVoidAsync("alert", "Reporte de conducta registrado exitosamente.");
+
+            // Limpiar formulario dejando la cascada intacta
+            nuevoReporte.Titulo = "";
+            nuevoReporte.Descripcion = "";
+            nuevoReporte.AlumnoId = null;
+
+            //await CargarHistorial();
+        }
+        else
+        {
+            await JS.InvokeVoidAsync("alert", "Error al guardar el reporte.");
+        }
+    }
+
+    private string GetColorGravedad(int gravedad) => gravedad switch
+    {
+        1 => "text-secondary",
+        2 => "text-warning",
+        3 => "text-danger",
+        4 => "text-dark",
+        _ => "text-dark"
+    };
+}

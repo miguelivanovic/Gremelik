@@ -43,6 +43,28 @@ namespace Gremelik.data.Contexts
         public DbSet<Pago> Pagos { get; set; }
         public DbSet<DetallePago> DetallesPagos { get; set; }
 
+        public DbSet<TransaccionBancaria> TransaccionesBancarias { get; set; }
+
+        public DbSet<Asistencia> Asistencias { get; set; }
+        public DbSet<ObservacionAlumno> Observaciones { get; set; }
+
+        public DbSet<Materia> Materias { get; set; }
+        public DbSet<AsignacionMaestro> AsignacionesMaestros { get; set; }
+
+        public DbSet<BitacoraAsistencia> BitacorasAsistencia { get; set; }
+
+        public DbSet<ConfiguracionAcademica> ConfiguracionesAcademicas { get; set; }
+        public DbSet<PeriodoInterno> PeriodosInternos { get; set; }
+        public DbSet<CalificacionInterna> CalificacionesInternas { get; set; }
+        public DbSet<CalificacionSEP> CalificacionesSEP { get; set; }
+
+        public DbSet<ReporteConducta> ReportesConducta { get; set; }
+
+        public DbSet<ConfiguracionRecargo> ConfiguracionesRecargo { get; set; }
+        public DbSet<ExcepcionCaja> ExcepcionesCaja { get; set; }
+
+        public DbSet<Factura> Facturas { get; set; }
+
         // --- LOGICA DE GUARDADO AUTOMÁTICO ---
         public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
         {
@@ -246,6 +268,158 @@ namespace Gremelik.data.Contexts
                 .WithMany(p => p.Detalles)
                 .HasForeignKey(d => d.PagoId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            // Evitar bucle de borrado en Asignaciones de Maestros
+            modelBuilder.Entity<AsignacionMaestro>()
+                .HasOne(a => a.Materia)
+                .WithMany()
+                .HasForeignKey(a => a.MateriaId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<AsignacionMaestro>()
+                .HasOne(a => a.Grupo)
+                .WithMany()
+                .HasForeignKey(a => a.GrupoId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Evitar bucle de borrado en Asistencias
+            modelBuilder.Entity<Asistencia>()
+                .HasOne(a => a.Materia)
+                .WithMany()
+                .HasForeignKey(a => a.MateriaId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<Asistencia>()
+                .HasOne(a => a.Grupo)
+                .WithMany()
+                .HasForeignKey(a => a.GrupoId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<ObservacionAlumno>()
+                .HasOne(o => o.Materia)
+                .WithMany()
+                .HasForeignKey(o => o.MateriaId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<ObservacionAlumno>()
+                .HasOne(o => o.Grupo)
+                .WithMany()
+                .HasForeignKey(o => o.GrupoId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<BitacoraAsistencia>()
+                .HasOne(b => b.Materia)
+                .WithMany()
+                .HasForeignKey(b => b.MateriaId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<BitacoraAsistencia>()
+                .HasOne(b => b.Grupo)
+                .WithMany()
+                .HasForeignKey(b => b.GrupoId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // --- REGLAS ANTI-CASCADA PARA CALIFICACIONES ---
+
+            // 1. Calificaciones Internas (Mes/Bimestre)
+            modelBuilder.Entity<CalificacionInterna>()
+                .HasOne(c => c.Alumno)
+                .WithMany()
+                .HasForeignKey(c => c.AlumnoId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<CalificacionInterna>()
+                .HasOne(c => c.Grupo)
+                .WithMany()
+                .HasForeignKey(c => c.GrupoId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<CalificacionInterna>()
+                .HasOne(c => c.Materia)
+                .WithMany()
+                .HasForeignKey(c => c.MateriaId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<CalificacionInterna>()
+                .HasOne(c => c.Periodo)
+                .WithMany()
+                .HasForeignKey(c => c.PeriodoInternoId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // 2. Calificaciones SEP (Oficiales)
+            modelBuilder.Entity<CalificacionSEP>()
+                .HasOne(c => c.Alumno)
+                .WithMany()
+                .HasForeignKey(c => c.AlumnoId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<CalificacionSEP>()
+                .HasOne(c => c.Grupo)
+                .WithMany()
+                .HasForeignKey(c => c.GrupoId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<CalificacionSEP>()
+                .HasOne(c => c.Materia)
+                .WithMany()
+                .HasForeignKey(c => c.MateriaId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // 3. Periodos Internos (Para evitar el error de cascada múltiple)
+            modelBuilder.Entity<PeriodoInterno>()
+                .HasOne(p => p.NivelEducativo)
+                .WithMany()
+                .HasForeignKey(p => p.NivelEducativoId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<PeriodoInterno>()
+                .HasOne(p => p.CicloEscolar)
+                .WithMany()
+                .HasForeignKey(p => p.CicloEscolarId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // --- REGLA ANTI-CASCADA PARA ASISTENCIAS ---
+            modelBuilder.Entity<Asistencia>()
+                .HasOne(a => a.CicloEscolar)
+                .WithMany()
+                .HasForeignKey(a => a.CicloEscolarId)
+                .OnDelete(DeleteBehavior.NoAction); // Evita el error de Múltiples Rutas en Cascada
+
+            // --- REGLA ANTI-CASCADA PARA ASISTENCIAS ---
+            modelBuilder.Entity<Asistencia>()
+                .HasOne(a => a.CicloEscolar)
+                .WithMany()
+                .HasForeignKey(a => a.CicloEscolarId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            // --- REGLA ANTI-CASCADA PARA REPORTES DE CONDUCTA ---
+            modelBuilder.Entity<ReporteConducta>()
+                .HasOne(r => r.CicloEscolar)
+                .WithMany()
+                .HasForeignKey(r => r.CicloEscolarId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            // --- CORRECCIÓN DEL ERROR DE CICLOS MÚLTIPLES ---
+            // Si tu error marcaba ExcepcionesCaja, agregamos esta regla:
+            modelBuilder.Entity<ExcepcionCaja>()
+                .HasOne(e => e.CuentaPorCobrar)
+                .WithMany() // O si tienes una lista en CuentasPorCobrar, pon el nombre de la lista adentro
+                .HasForeignKey(e => e.CuentaPorCobrarId)
+                .OnDelete(DeleteBehavior.Restrict); // Esto apaga el borrado en cascada
+
+            // Si la Factura también da lata con el PagoId o TutorId:
+            modelBuilder.Entity<Factura>()
+                .HasOne(f => f.Pago)
+                .WithMany()
+                .HasForeignKey(f => f.PagoId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<Factura>()
+                .HasOne(f => f.Tutor)
+                .WithMany()
+                .HasForeignKey(f => f.TutorId)
+                .OnDelete(DeleteBehavior.Restrict);
+
         }
     }
 }

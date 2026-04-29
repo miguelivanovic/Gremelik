@@ -1,6 +1,6 @@
 ﻿@page "/academico/avance-reinscripcion"
 @using Gremelik.core.Entities
-@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin")]
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin, Coordinador")]
 @inject HttpClient Http
 
 <div class="container-fluid">

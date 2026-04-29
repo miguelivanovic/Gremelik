@@ -1,0 +1,308 @@
+﻿@page "/academico/reporte-asistencia"
+@using Gremelik.core.Entities
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin, Coordinador, Maestro")]
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<div class="container-fluid pb-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3><i class="bi bi-funnel text-primary"></i> Resumen de Asistencia</h3>
+    </div>
+
+    <div class="card shadow-sm border-0 bg-light mb-4">
+        <div class="card-body">
+            <div class="row g-3 align-items-end mb-3">
+                <div class="col-md-3">
+                    <label class="fw-bold text-muted small">Plantel:</label>
+                    <select class="form-select border-primary" value="@plantelId" @onchange="CambiarPlantel">
+                        <option value="">-- Seleccionar --</option>
+                        @if (planteles != null)
+                        {
+                            @foreach (var p in planteles)
+                            {
+                                <option value="@p.Id">@p.Nombre</option>
+                            }
+                        }
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="fw-bold text-muted small">Nivel:</label>
+                    <select class="form-select border-primary" @onchange="CambiarNivel" disabled="@(niveles == null)">
+                        <option value="">-- Seleccionar --</option>
+                        @if (niveles != null)
+                        {
+                            @foreach (var n in niveles)
+                            {
+                                <option value="@n.Id">@n.Nombre</option>
+                            }
+                        }
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="fw-bold text-muted small">Grado:</label>
+                    <select class="form-select border-primary" value="@gradoId" @onchange="CambiarGrado" disabled="@(grados == null)">
+                        <option value="0">-- Seleccionar --</option>
+                        @if (grados != null)
+                        {
+                            @foreach (var g in grados)
+                            {
+                                <option value="@g.Id">@g.Nombre</option>
+                            }
+                        }
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="fw-bold text-muted small">Grupo:</label>
+                    <select class="form-select border-primary fw-bold" value="@grupoId" @onchange="CambiarGrupo" disabled="@(grupos == null)">
+                        <option value="0">-- Seleccionar --</option>
+                        @if (grupos != null)
+                        {
+                            @foreach (var g in grupos)
+                            {
+                                <option value="@g.Id">@g.Nombre (@g.Turno)</option>
+                            }
+                        }
+                    </select>
+                </div>
+            </div>
+
+            <div class="row g-3 align-items-end">
+                <div class="col-md-3">
+                    <label class="fw-bold text-muted small">Materia (Opcional):</label>
+                    <select class="form-select" @bind="materiaIdFiltro" disabled="@(materiasFiltro == null || !materiasFiltro.Any())">
+                        <option value="">-- Todas mis materias --</option>
+                        @if (materiasFiltro != null)
+                        {
+                            @foreach (var m in materiasFiltro)
+                            {
+                                <option value="@m.MateriaId">@m.Nombre</option>
+                            }
+                        }
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="fw-bold text-muted small">Alumno (Opcional):</label>
+                    <select class="form-select" @bind="alumnoIdFiltro" disabled="@(alumnosFiltro == null || !alumnosFiltro.Any())">
+                        <option value="">-- Todos los alumnos --</option>
+                        @if (alumnosFiltro != null)
+                        {
+                            @foreach (var a in alumnosFiltro)
+                            {
+                                <option value="@a.AlumnoId">@a.NombreCompleto</option>
+                            }
+                        }
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="fw-bold text-muted small">Desde:</label>
+                    <input type="date" class="form-control border-primary" @bind="fechaInicio" />
+                </div>
+                <div class="col-md-2">
+                    <label class="fw-bold text-muted small">Hasta:</label>
+                    <input type="date" class="form-control border-primary" @bind="fechaFin" max="@DateTime.Today.ToString("yyyy-MM-dd")" />
+                </div>
+                <div class="col-md-2">
+                    <button class="btn btn-primary fw-bold w-100 shadow-sm" @onclick="GenerarReporte" disabled="@(grupoId == 0)">
+                        <i class="bi bi-search"></i> Buscar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (cargando)
+    {
+        <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+    }
+    else if (reporte != null)
+    {
+        int diasTotales = reporte.DiasConClase.Count;
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                <span class="fw-bold">Resumen del @fechaInicio.ToString("dd/MMM") al @fechaFin.ToString("dd/MMM")</span>
+                <span class="badge bg-light text-dark">Días evaluados: @diasTotales</span>
+            </div>
+
+            <table class="table table-hover text-center align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="text-start ps-4">Alumno</th>
+                        <th class="text-success">Asistencias</th>
+                        <th class="text-danger" title="Días con al menos una falta">Faltas (Días)</th>
+                        <th class="text-warning text-dark">Retardos (Días)</th>
+                        <th class="pe-4">Detalle de Clases</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var alumno in reporte.Alumnos)
+                    {
+                        var incidencias = reporte.Faltas.Where(f => f.AlumnoId == alumno.AlumnoId).ToList();
+
+                        // MAGIA AQUÍ: Agrupamos por día (Distinct)
+                        int diasConFalta = incidencias.Where(f => f.Estatus == 2).Select(f => f.Fecha).Distinct().Count();
+                        int diasConRetardo = incidencias.Where(f => f.Estatus == 3).Select(f => f.Fecha).Distinct().Count();
+                        int diasJustificados = incidencias.Where(f => f.Estatus == 4).Select(f => f.Fecha).Distinct().Count();
+
+                        int asistencias = diasTotales - diasConFalta - diasJustificados;
+
+                        <tr>
+                            <td class="text-start ps-4 fw-bold">@alumno.NombreCompleto</td>
+                            <td><span class="badge bg-success fs-6">@asistencias</span></td>
+                            <td>
+                                @if (diasConFalta > 0)
+                                {
+                                    <span class="badge bg-danger fs-6">@diasConFalta</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">-</span>
+                                }
+                            </td>
+                            <td>
+                                @if (diasConRetardo > 0)
+                                {
+                                    <span class="badge bg-warning text-dark fs-6">@diasConRetardo</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">-</span>
+                                }
+                            </td>
+                            <td class="pe-4">
+                                @if (incidencias.Any())
+                                {
+                                    <button class="btn btn-sm btn-outline-primary fw-bold" @onclick="() => AbrirDetalle(alumno, incidencias)">
+                                        <i class="bi bi-eye"></i> Ver @incidencias.Count incidencias
+                                    </button>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-light text-muted border"><i class="bi bi-check2-all"></i> Perfecto</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@if (mostrarModal)
+{
+    <div class="modal fade show d-block" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header bg-dark text-white">
+                    <h5 class="modal-title fw-bold">Desglose de Clases</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="() => mostrarModal = false"></button>
+                </div>
+                <div class="modal-body bg-light p-0">
+                    <div class="p-3 border-bottom bg-white">
+                        <h6 class="fw-bold mb-0 text-primary">@alumnoSeleccionado?.NombreCompleto</h6>
+                    </div>
+
+                    <ul class="list-group list-group-flush">
+                        @foreach (var inc in incidenciasSeleccionadas.OrderByDescending(i => i.Fecha).ThenBy(i => i.MateriaNombre))
+                        {
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <div>
+                                    <div class="fw-bold">@inc.Fecha.ToString("dddd, dd 'de' MMMM")</div>
+                                    <small class="text-muted"><i class="bi bi-book me-1"></i> @inc.MateriaNombre</small>
+                                </div>
+                                <div>
+                                    @if (inc.Estatus == 2)
+                                    {
+                                        <span class="badge bg-danger px-3 py-2 shadow-sm">Falta</span>
+                                    }
+                                    else if (inc.Estatus == 3)
+                                    {
+                                        <span class="badge bg-warning text-dark px-3 py-2 shadow-sm">Retardo</span>
+                                    }
+                                    else if (inc.Estatus == 4)
+                                    {
+                                        <span class="badge bg-info text-dark px-3 py-2 shadow-sm">Justificado</span>
+                                    }
+                                </div>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    public class AlumnoFiltro { public Guid AlumnoId { get; set; } public string NombreCompleto { get; set; } = ""; }
+    public class MateriaFiltro { public Guid MateriaId { get; set; } public string Nombre { get; set; } = ""; }
+
+    public class FaltaReporte { public Guid AlumnoId { get; set; } public DateTime Fecha { get; set; } public int Estatus { get; set; } public string MateriaNombre { get; set; } = ""; }
+    public class ReporteDto { public List<DateTime> DiasConClase { get; set; } = new(); public List<AlumnoFiltro> Alumnos { get; set; } = new(); public List<FaltaReporte> Faltas { get; set; } = new(); }
+
+    List<Plantel>? planteles; List<NivelEducativo>? niveles; List<Grado>? grados; List<Grupo>? grupos;
+    List<MateriaFiltro>? materiasFiltro; List<AlumnoFiltro>? alumnosFiltro;
+
+    Guid plantelId = Guid.Empty; int gradoId = 0; int grupoId = 0; int cicloActualId = 0;
+    Guid? materiaIdFiltro; Guid? alumnoIdFiltro;
+
+    DateTime fechaInicio = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+    DateTime fechaFin = DateTime.Today;
+
+    ReporteDto? reporte;
+    bool cargando = false; bool mostrarModal = false;
+    AlumnoFiltro? alumnoSeleccionado;
+    List<FaltaReporte> incidenciasSeleccionadas = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        planteles = await Http.GetFromJsonAsync<List<Plantel>>("api/Planteles");
+        var ciclos = await Http.GetFromJsonAsync<List<CicloEscolar>>("api/Ciclos");
+        var activo = ciclos?.FirstOrDefault(c => c.Estatus == EstatusCiclo.Actual);
+        if (activo != null) cicloActualId = activo.Id;
+
+        // BUG CORREGIDO: Si hay un solo plantel, carga los niveles de inmediato
+        if (planteles != null && planteles.Count == 1)
+        {
+            plantelId = planteles.First().Id;
+            niveles = await Http.GetFromJsonAsync<List<NivelEducativo>>($"api/Niveles/plantel/{plantelId}");
+        }
+    }
+
+    async Task CambiarPlantel(ChangeEventArgs e) { if (Guid.TryParse(e.Value?.ToString(), out Guid id)) { plantelId = id; niveles = await Http.GetFromJsonAsync<List<NivelEducativo>>($"api/Niveles/plantel/{id}"); } grados = null; grupos = null; grupoId = 0; ResetFiltrosAvanzados(); }
+    async Task CambiarNivel(ChangeEventArgs e) { if (Guid.TryParse(e.Value?.ToString(), out Guid id)) grados = await Http.GetFromJsonAsync<List<Grado>>($"api/Grados/nivel/{id}"); grupos = null; grupoId = 0; ResetFiltrosAvanzados(); }
+    async Task CambiarGrado(ChangeEventArgs e) { if (int.TryParse(e.Value?.ToString(), out int id) && id != 0) { gradoId = id; grupos = await Http.GetFromJsonAsync<List<Grupo>>($"api/Grupos/grado/{id}/ciclo/{cicloActualId}"); } else { grupos = null; grupoId = 0; ResetFiltrosAvanzados(); } }
+
+    async Task CambiarGrupo(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int id) && id != 0)
+        {
+            grupoId = id;
+            // Al elegir grupo, llenamos los nuevos filtros opcionales
+            materiasFiltro = await Http.GetFromJsonAsync<List<MateriaFiltro>>($"api/Asistencias/materias-filtro?grupoId={grupoId}&cicloId={cicloActualId}");
+            alumnosFiltro = await Http.GetFromJsonAsync<List<AlumnoFiltro>>($"api/Asistencias/alumnos-filtro?grupoId={grupoId}");
+        }
+        else { grupoId = 0; ResetFiltrosAvanzados(); }
+    }
+
+    void ResetFiltrosAvanzados() { materiasFiltro = null; alumnosFiltro = null; materiaIdFiltro = null; alumnoIdFiltro = null; reporte = null; }
+
+    private async Task GenerarReporte()
+    {
+        if (grupoId == 0) return;
+        cargando = true;
+
+        string url = $"api/Asistencias/reporte?grupoId={grupoId}&fechaInicio={fechaInicio:yyyy-MM-dd}&fechaFin={fechaFin:yyyy-MM-dd}&cicloId={cicloActualId}";
+        if (materiaIdFiltro.HasValue) url += $"&materiaId={materiaIdFiltro}";
+        if (alumnoIdFiltro.HasValue) url += $"&alumnoId={alumnoIdFiltro}";
+
+        try { reporte = await Http.GetFromJsonAsync<ReporteDto>(url); }
+        catch (Exception ex) { await JS.InvokeVoidAsync("alert", "Error al generar el reporte: " + ex.Message); }
+
+        cargando = false;
+    }
+
+    private void AbrirDetalle(AlumnoFiltro alumno, List<FaltaReporte> incidencias) { alumnoSeleccionado = alumno; incidenciasSeleccionadas = incidencias; mostrarModal = true; }
+}

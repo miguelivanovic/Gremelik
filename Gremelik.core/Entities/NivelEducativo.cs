@@ -20,5 +20,9 @@ namespace Gremelik.core.Entities
         // RVOE Específico para este nivel en este plantel
         public string RVOE { get; set; } = string.Empty;
         public DateTime? FechaRVOE { get; set; }
+
+        // Valor exacto que exige el SAT para el complemento IEDU
+        [StringLength(50)]
+        public string NivelSAT { get; set; } = string.Empty;
     }
 }

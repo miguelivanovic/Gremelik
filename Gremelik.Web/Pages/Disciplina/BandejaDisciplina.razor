@@ -1,0 +1,370 @@
+﻿@page "/disciplina/bandeja"
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin, Coordinador, Maestro")]
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<PageTitle>Bandeja de Disciplina</PageTitle>
+
+<div class="container-fluid pb-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h3 class="fw-bold text-dark mb-0"><i class="bi bi-inbox-fill text-danger me-2"></i> Bandeja de Reportes</h3>
+            <span class="text-muted small">Consulta y seguimiento de incidencias disciplinarias</span>
+        </div>
+    </div>
+
+    <AuthorizeView Roles="GlobalAdmin, SchoolAdmin, Coordinador">
+        <Authorized>
+            <div class="card border-0 shadow-sm mb-4 bg-light">
+                <div class="card-body">
+                    <div class="row g-2 align-items-end">
+                        <div class="col-md-2">
+                            <label class="fw-bold text-muted small">Plantel:</label>
+                            <select class="form-select border-primary text-sm" value="@plantelId" @onchange="CambiarPlantel">
+                                <option value="">-- Todos --</option>
+                                @if (planteles != null)
+                                {
+                                    foreach (var p in planteles)
+                                    {
+                                        <option value="@p.Id">@p.Nombre</option>
+                                    }
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="fw-bold text-muted small">Nivel:</label>
+                            <select class="form-select border-primary text-sm" value="@nivelId" @onchange="CambiarNivel" disabled="@(niveles == null)">
+                                <option value="">-- Todos --</option>
+                                @if (niveles != null)
+                                {
+                                    foreach (var n in niveles)
+                                    {
+                                        <option value="@n.Id">@n.Nombre</option>
+                                    }
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="fw-bold text-muted small">Grado:</label>
+                            <select class="form-select border-primary text-sm" value="@gradoId" @onchange="CambiarGrado" disabled="@(grados == null)">
+                                <option value="0">-- Todos --</option>
+                                @if (grados != null)
+                                {
+                                    foreach (var g in grados)
+                                    {
+                                        <option value="@g.Id">@g.Nombre</option>
+                                    }
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="fw-bold text-muted small">Grupo:</label>
+                            <select class="form-select border-primary fw-bold text-sm" value="@grupoId" @onchange="CambiarGrupo" disabled="@(grupos == null)">
+                                <option value="0">-- Todos los grupos --</option>
+                                @if (grupos != null)
+                                {
+                                    foreach (var g in grupos)
+                                    {
+                                        <option value="@g.Id">@g.Nombre (@g.Turno)</option>
+                                    }
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="fw-bold text-muted small">Alumno (Opcional):</label>
+                            <select class="form-select border-primary text-sm" value="@alumnoId" @onchange="CambiarAlumno" disabled="@(alumnos == null)">
+                                <option value="">-- Todos los alumnos --</option>
+                                @if (alumnos != null)
+                                {
+                                    foreach (var a in alumnos)
+                                    {
+                                        <option value="@a.AlumnoId">@a.NombreCompleto</option>
+                                    }
+                                }
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </Authorized>
+        <NotAuthorized>
+            <div class="alert alert-info shadow-sm mb-4 border-info">
+                <i class="bi bi-info-circle-fill fs-5 me-2"></i>
+                <strong>Modo Maestro:</strong> Estás viendo únicamente el historial de los reportes que tú has levantado en este ciclo escolar.
+            </div>
+        </NotAuthorized>
+    </AuthorizeView>
+
+    <div class="card border-0 shadow-sm">
+        <div class="card-body p-0">
+            @if (cargando)
+            {
+                <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+            }
+            else if (reportes != null && reportes.Any())
+            {
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="ps-4">Fecha</th>
+                                <th>Alumno</th>
+                                <th>Incidencia</th>
+                                <th>Gravedad</th>
+                                <th>Estatus</th>
+                                <th class="text-center pe-4">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var r in reportes)
+                            {
+                                <tr>
+                                    <td class="ps-4 text-muted small fw-bold">@r.FechaIncidencia.ToString("dd MMM yyyy, hh:mm tt")</td>
+                                    <td class="fw-bold text-dark">@r.Alumno</td>
+                                    <td>
+                                        <div class="fw-bold text-dark">@r.Titulo</div>
+                                        <small class="text-muted"><i class="bi bi-person-badge"></i> Reportó: @r.NombreReportador</small>
+                                    </td>
+                                    <td>
+                                        @if (r.Gravedad == 1)
+                                        {
+                                            <span class="badge bg-secondary">Leve</span>
+                                        }
+                                        @if (r.Gravedad == 2)
+                                        {
+                                            <span class="badge bg-warning text-dark">Moderada</span>
+                                        }
+                                        @if (r.Gravedad == 3)
+                                        {
+                                            <span class="badge bg-danger">Grave</span>
+                                        }
+                                        @if (r.Gravedad == 4)
+                                        {
+                                            <span class="badge bg-dark">Muy Grave</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <span class="badge border @(r.Estatus == 1 ? "border-danger text-danger bg-danger-subtle" : r.Estatus == 2 ? "border-warning text-warning bg-warning-subtle" : "border-success text-success bg-success-subtle")">
+                                            @(r.Estatus == 1 ? "Pendiente" : r.Estatus == 2 ? "En Proceso" : "Cerrado")
+                                        </span>
+                                    </td>
+                                    <td class="text-center pe-4">
+                                        <AuthorizeView Roles="GlobalAdmin, SchoolAdmin, Coordinador">
+                                            <button class="btn btn-sm btn-primary fw-bold shadow-sm" @onclick="() => AbrirModal(r)">
+                                                <i class="bi bi-pencil-square"></i> Resolver
+                                            </button>
+                                        </AuthorizeView>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            else
+            {
+                <div class="p-5 text-center text-muted">
+                    <i class="bi bi-inbox fs-1 text-secondary d-block mb-3"></i>
+                    <h5 class="fw-bold">No se encontraron reportes.</h5>
+                    <p>Ajusta los filtros de búsqueda o relájate, la escuela está en paz hoy.</p>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@if (mostrarModal && reporteSeleccionado != null)
+{
+    <div class="modal fade show d-block" style="background-color: rgba(0,0,0,0.6);" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header bg-dark text-white border-0">
+                    <h5 class="modal-title fw-bold"><i class="bi bi-shield-check me-2"></i> Resolver Reporte</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CerrarModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-light border border-secondary mb-3">
+                        <strong class="d-block text-dark fs-5">@reporteSeleccionado.Alumno</strong>
+                        <span class="text-danger fw-bold d-block mb-2">@reporteSeleccionado.Titulo</span>
+
+                        <div class="bg-white p-3 border rounded shadow-sm text-muted small">
+                            <i class="bi bi-quote fs-5 text-secondary"></i>
+                            <em>@reporteSeleccionado.Descripcion</em>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="fw-bold text-muted small">Cambiar Estatus:</label>
+                        <select class="form-select border-primary fw-bold" @bind="resolucion.Estatus">
+                            <option value="1">Pendiente</option>
+                            <option value="2">En Proceso (Citatorio / Investigación)</option>
+                            <option value="3">Cerrado / Resuelto</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="fw-bold text-muted small">Acción Tomada / Sanción (Opcional):</label>
+                        <textarea class="form-control" rows="3" placeholder="Ej. Se habló con el padre de familia y se aplicó suspensión..." @bind="resolucion.AccionTomada"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light border-0">
+                    <button type="button" class="btn btn-secondary fw-bold" @onclick="CerrarModal">Cancelar</button>
+                    <button type="button" class="btn btn-primary fw-bold shadow-sm" @onclick="GuardarResolucion" disabled="@guardando">
+                        @if (guardando)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2"></span>
+                        }
+                        <i class="bi bi-save"></i> Guardar Cambios
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    // --- CLASES AUXILIARES ---
+    public class GrupoBasico { public int Id { get; set; } public string Nombre { get; set; } = ""; public string Turno { get; set; } = ""; }
+    public class AlumnoBasico { public Guid AlumnoId { get; set; } public string NombreCompleto { get; set; } = ""; }
+    public class CicloEscolarBasico { public int Id { get; set; } public int Estatus { get; set; } }
+    public class PlantelBasico { public Guid Id { get; set; } public string Nombre { get; set; } = ""; }
+    public class NivelBasico { public Guid Id { get; set; } public string Nombre { get; set; } = ""; }
+    public class GradoBasico { public int Id { get; set; } public string Nombre { get; set; } = ""; }
+
+    public class ReporteBandejaDto
+    {
+        public Guid Id { get; set; }
+        public DateTime FechaIncidencia { get; set; }
+        public Guid AlumnoId { get; set; }
+        public string Alumno { get; set; } = "";
+        public int Gravedad { get; set; }
+        public string Titulo { get; set; } = "";
+        public string Descripcion { get; set; } = ""; // <--- ¡AGREGAMOS ESTA LÍNEA!
+        public int Estatus { get; set; }
+        public string NombreReportador { get; set; } = "";
+        public string? AccionTomada { get; set; }
+    }
+
+    public class ResolverReporteDto
+    {
+        public int Estatus { get; set; }
+        public string? AccionTomada { get; set; }
+    }
+
+    // --- ESTADO Y VARIABLES ---
+    int cicloActualId = 0;
+
+    // Filtros
+    List<PlantelBasico>? planteles; List<NivelBasico>? niveles; List<GradoBasico>? grados; List<GrupoBasico>? grupos; List<AlumnoBasico>? alumnos;
+    Guid plantelId = Guid.Empty; Guid nivelId = Guid.Empty; int gradoId = 0; int grupoId = 0; Guid? alumnoId = null;
+
+    List<ReporteBandejaDto>? reportes;
+    bool cargando = true;
+
+    // Modal
+    bool mostrarModal = false;
+    bool guardando = false;
+    ReporteBandejaDto? reporteSeleccionado;
+    ResolverReporteDto resolucion = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var ciclos = await Http.GetFromJsonAsync<List<CicloEscolarBasico>>("api/Ciclos");
+        var activo = ciclos?.FirstOrDefault(c => c.Estatus == 1);
+
+        if (activo != null)
+        {
+            cicloActualId = activo.Id;
+            // Cargar inicial sin filtros (el backend sabrá qué mandarle según su rol)
+            await CargarBandeja();
+        }
+
+        planteles = await Http.GetFromJsonAsync<List<PlantelBasico>>("api/Planteles");
+        if (planteles != null && planteles.Count == 1)
+        {
+            plantelId = planteles.First().Id;
+            niveles = await Http.GetFromJsonAsync<List<NivelBasico>>($"api/Niveles/plantel/{plantelId}");
+        }
+    }
+
+    // --- EVENTOS CASCADA Y FILTROS ---
+    async Task CambiarPlantel(ChangeEventArgs e)
+    {
+        if (Guid.TryParse(e.Value?.ToString(), out Guid id)) { plantelId = id; niveles = await Http.GetFromJsonAsync<List<NivelBasico>>($"api/Niveles/plantel/{id}"); }
+        grados = null; grupos = null; alumnos = null; nivelId = Guid.Empty; gradoId = 0; grupoId = 0; alumnoId = null;
+        await CargarBandeja();
+    }
+    async Task CambiarNivel(ChangeEventArgs e)
+    {
+        if (Guid.TryParse(e.Value?.ToString(), out Guid id)) { nivelId = id; grados = await Http.GetFromJsonAsync<List<GradoBasico>>($"api/Grados/nivel/{id}"); }
+        grupos = null; alumnos = null; gradoId = 0; grupoId = 0; alumnoId = null;
+        await CargarBandeja();
+    }
+    async Task CambiarGrado(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int id) && id != 0) { gradoId = id; grupos = await Http.GetFromJsonAsync<List<GrupoBasico>>($"api/Grupos/grado/{id}/ciclo/{cicloActualId}"); }
+        else { grupos = null; alumnos = null; grupoId = 0; alumnoId = null; }
+        await CargarBandeja();
+    }
+    async Task CambiarGrupo(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int id) && id != 0)
+        {
+            grupoId = id; alumnoId = null;
+            alumnos = await Http.GetFromJsonAsync<List<AlumnoBasico>>($"api/Asistencias/alumnos-filtro?grupoId={grupoId}");
+        }
+        else { grupoId = 0; alumnos = null; alumnoId = null; }
+        await CargarBandeja();
+    }
+    async Task CambiarAlumno(ChangeEventArgs e)
+    {
+        if (Guid.TryParse(e.Value?.ToString(), out Guid id)) { alumnoId = id; } else { alumnoId = null; }
+        await CargarBandeja();
+    }
+
+    private async Task CargarBandeja()
+    {
+        cargando = true;
+        string url = $"api/ReportesConducta/bandeja?cicloId={cicloActualId}";
+        if (grupoId > 0) url += $"&grupoId={grupoId}";
+        if (alumnoId != null) url += $"&alumnoId={alumnoId}";
+
+        reportes = await Http.GetFromJsonAsync<List<ReporteBandejaDto>>(url);
+        cargando = false;
+    }
+
+    // --- MODAL Y RESOLUCIÓN ---
+    private void AbrirModal(ReporteBandejaDto r)
+    {
+        reporteSeleccionado = r;
+        resolucion.Estatus = r.Estatus;
+        resolucion.AccionTomada = r.AccionTomada ?? "";
+        mostrarModal = true;
+    }
+
+    private void CerrarModal()
+    {
+        mostrarModal = false;
+        reporteSeleccionado = null;
+    }
+
+    private async Task GuardarResolucion()
+    {
+        if (reporteSeleccionado == null) return;
+
+        guardando = true;
+        var res = await Http.PutAsJsonAsync($"api/ReportesConducta/resolver/{reporteSeleccionado.Id}", resolucion);
+        guardando = false;
+
+        if (res.IsSuccessStatusCode)
+        {
+            CerrarModal();
+            await CargarBandeja(); // Refrescamos la tabla para que se pinte en verde el estatus "Cerrado"
+        }
+        else
+        {
+            await JS.InvokeVoidAsync("alert", "Ocurrió un error al actualizar el reporte.");
+        }
+    }
+}

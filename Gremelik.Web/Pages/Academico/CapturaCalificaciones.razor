@@ -1,0 +1,453 @@
+﻿@page "/academico/calificaciones"
+@using Gremelik.core.Entities
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin, Coordinador, Maestro")]
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<div class="container-fluid pb-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3><i class="bi bi-journal-check text-primary"></i> Captura de Calificaciones</h3>
+    </div>
+
+    <div class="card shadow-sm border-0 bg-light mb-4">
+        <div class="card-body">
+            <div class="row g-3 align-items-end mb-3">
+                <div class="col-md-3">
+                    <label class="fw-bold text-muted small">Plantel:</label>
+                    <select class="form-select border-primary" value="@plantelId" @onchange="CambiarPlantel">
+                        <option value="">-- Seleccionar --</option>
+                        @if (planteles != null)
+                        {
+                            foreach (var p in planteles)
+                            {
+                                <option value="@p.Id">@p.Nombre</option>
+                            }
+                        }
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="fw-bold text-muted small">Nivel:</label>
+                    <select class="form-select border-primary" @onchange="CambiarNivel" disabled="@(niveles == null)">
+                        <option value="">-- Seleccionar --</option>
+                        @if (niveles != null)
+                        {
+                            foreach (var n in niveles)
+                            {
+                                <option value="@n.Id">@n.Nombre</option>
+                            }
+                        }
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="fw-bold text-muted small">Grado:</label>
+                    <select class="form-select border-primary" value="@gradoId" @onchange="CambiarGrado" disabled="@(grados == null)">
+                        <option value="0">-- Seleccionar --</option>
+                        @if (grados != null)
+                        {
+                            foreach (var g in grados)
+                            {
+                                <option value="@g.Id">@g.Nombre</option>
+                            }
+                        }
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="fw-bold text-muted small">Grupo:</label>
+                    <select class="form-select border-primary fw-bold" value="@grupoId" @onchange="CambiarGrupo" disabled="@(grupos == null)">
+                        <option value="0">-- Seleccionar --</option>
+                        @if (grupos != null)
+                        {
+                            foreach (var g in grupos)
+                            {
+                                <option value="@g.Id">@g.Nombre (@g.Turno)</option>
+                            }
+                        }
+                    </select>
+                </div>
+            </div>
+
+            <div class="row g-3 align-items-end">
+                <div class="col-md-4">
+                    <label class="fw-bold text-muted small">Materia:</label>
+                    <select class="form-select border-primary" @bind="materiaId" disabled="@(materias == null || !materias.Any())">
+                        <option value="">-- Seleccionar Materia --</option>
+                        @if (materias != null)
+                        {
+                            foreach (var m in materias)
+                            {
+                                <option value="@m.MateriaId">@m.Nombre</option>
+                            }
+                        }
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="fw-bold text-muted small">Trimestre Oficial SEP:</label>
+                    <select class="form-select border-primary fw-bold text-primary" @bind="trimestreSep">
+                        <option value="1">Trimestre 1</option>
+                        <option value="2">Trimestre 2</option>
+                        <option value="3">Trimestre 3</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <button class="btn btn-primary fw-bold w-100 shadow-sm" @onclick="CargarMatriz" disabled="@(grupoId == 0 || materiaId == Guid.Empty)">
+                        <i class="bi bi-table"></i> Cargar Matriz
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (cargando)
+    {
+        <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+    }
+    else if (matriz != null)
+    {
+        <div class="alert alert-info shadow-sm d-flex align-items-center mb-3">
+            <i class="bi bi-info-circle-fill fs-4 me-3"></i>
+            <div>
+                <strong>Reglas:</strong> Escala de <strong>@matriz.EscalaMinima a @matriz.EscalaMaxima</strong> (Aprobatoria: @matriz.CalificacionAprobatoria).
+                Formato oficial: @(matriz.UsaDecimales ? "ACEPTA DECIMALES." : "SÓLO ENTEROS.")
+            </div>
+        </div>
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                <span class="fw-bold">Alumnos Inscritos (@matriz.Alumnos.Count)</span>
+                <span class="badge bg-light text-dark">Trimestre @trimestreSep</span>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover align-middle mb-0 text-center">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="text-start ps-3 align-middle" style="min-width: 250px;">Alumno</th>
+
+                            @foreach (var periodo in matriz.Periodos)
+                            {
+                                <th style="min-width: 120px;">
+                                    <div class="fw-bold mb-2">
+                                        @periodo.Nombre
+                                        @if (!periodo.AbiertoParaCaptura)
+                                        {
+                                            <i class="bi bi-lock-fill text-danger ms-1" title="Periodo Cerrado por el Coordinador"></i>
+                                        }
+                                    </div>
+                                    <button class="btn btn-sm btn-outline-primary w-100 fw-bold"
+                                            @onclick="() => GuardarMes(periodo.Id)"
+                                            disabled="@(!periodo.AbiertoParaCaptura || sellando)"
+                                            title="Guardar calificaciones de @periodo.Nombre">
+                                        <i class="bi bi-save"></i> Guardar
+                                    </button>
+                                </th>
+                            }
+
+                            <th class="bg-primary-subtle border-primary" style="min-width: 150px;">
+                                <div class="fw-bold text-primary mb-2">Promedio SEP</div>
+                                <button class="btn btn-sm btn-primary w-100 fw-bold shadow-sm" @onclick="CalcularPromedios" title="Autocompletar promedios">
+                                    <i class="bi bi-calculator"></i> Calcular
+                                </button>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var alumno in matriz.Alumnos)
+                        {
+                            bool bloqueado = alumno.Confirmado;
+                            <tr>
+                                <td class="text-start ps-3 fw-bold @(bloqueado ? "text-success" : "text-dark")">
+                                    @if (bloqueado)
+                                    {
+                                        <i class="bi bi-lock-fill text-success me-1" title="Trimestre Cerrado"></i>
+                                    }
+                                    @alumno.NombreCompleto
+                                </td>
+
+                                @foreach (var periodo in matriz.Periodos)
+                                {
+                                    var celda = alumno.CeldasInternas.FirstOrDefault(c => c.PeriodoId == periodo.Id);
+                                    // Verificamos si la celda se debe bloquear (ya sea porque se cerró el trimestre o porque el coordinador cerró el mes)
+                                    bool inputBloqueado = bloqueado || !periodo.AbiertoParaCaptura;
+
+                                    <td>
+                                        <input type="number" step="@(matriz.UsaDecimales ? "0.1" : "1")" min="@matriz.EscalaMinima" max="@matriz.EscalaMaxima"
+                                               class="form-control text-center fw-bold @(celda?.Valor < matriz.CalificacionAprobatoria ? "text-danger bg-danger-subtle" : "") @(inputBloqueado ? "bg-light text-muted" : "")"
+                                               @bind="celda!.Valor" disabled="@inputBloqueado" />
+                                    </td>
+                                }
+
+                                <td class="bg-light border-primary">
+                                    <input type="number" step="@(matriz.UsaDecimales ? "0.1" : "1")" min="@matriz.EscalaMinima" max="@matriz.EscalaMaxima"
+                                           class="form-control border-primary text-center fw-bold fs-5 @(alumno.NotaSEP < matriz.CalificacionAprobatoria ? "text-danger" : "text-primary")"
+                                           @bind="alumno.NotaSEP" disabled="@bloqueado" />
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <div class="card-footer bg-light text-end p-3">
+                <button class="btn btn-success fw-bold px-4 py-2 shadow-sm" @onclick="SellarTrimestreSEP" disabled="@sellando">
+                    @if (sellando)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2"></span>
+                    }
+                    <i class="bi bi-check-circle-fill"></i> Confirmar y Cerrar Trimestre Oficial
+                </button>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    // CLASES FUERTEMENTE TIPADAS PARA EVITAR ERRORES DE JSON
+    public class MateriaFiltro { public Guid MateriaId { get; set; } public string Nombre { get; set; } = ""; }
+
+    public class PeriodoMatriz { public Guid Id { get; set; } public string Nombre { get; set; } = ""; public bool AbiertoParaCaptura { get; set; } }
+    public class NotaInternaDto { public Guid PeriodoInternoId { get; set; } public decimal Nota { get; set; } }
+
+    // El modelo auxiliar para manipular las celdas en Blazor
+    public class CeldaFila { public Guid PeriodoId { get; set; } public decimal? Valor { get; set; } }
+
+    public class AlumnoMatriz
+    {
+        public Guid AlumnoId { get; set; }
+        public string NombreCompleto { get; set; } = "";
+        public List<NotaInternaDto> NotasInternas { get; set; } = new();
+        public decimal? NotaSEP { get; set; }
+        public bool Confirmado { get; set; }
+
+        // Propiedad que usamos para pintar los inputs
+        public List<CeldaFila> CeldasInternas { get; set; } = new();
+    }
+
+    public class MatrizRespuesta
+    {
+        public bool UsaDecimales { get; set; }
+        public decimal CalificacionAprobatoria { get; set; }
+        public decimal EscalaMinima { get; set; }
+        public decimal EscalaMaxima { get; set; }
+        public List<PeriodoMatriz> Periodos { get; set; } = new();
+        public List<AlumnoMatriz> Alumnos { get; set; } = new();
+    }
+
+    // VARIABLES DE ESTADO
+    List<Plantel>? planteles; List<NivelEducativo>? niveles; List<Grado>? grados; List<Grupo>? grupos;
+    List<MateriaFiltro>? materias;
+    Guid plantelId = Guid.Empty; int gradoId = 0; int grupoId = 0; Guid materiaId = Guid.Empty;
+    int cicloActualId = 0; int trimestreSep = 1;
+
+    MatrizRespuesta? matriz;
+    bool cargando = false; bool sellando = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        planteles = await Http.GetFromJsonAsync<List<Plantel>>("api/Planteles");
+        var ciclos = await Http.GetFromJsonAsync<List<CicloEscolar>>("api/Ciclos");
+        var activo = ciclos?.FirstOrDefault(c => c.Estatus == EstatusCiclo.Actual);
+        if (activo != null) cicloActualId = activo.Id;
+
+        if (planteles != null && planteles.Count == 1)
+        {
+            plantelId = planteles.First().Id;
+            niveles = await Http.GetFromJsonAsync<List<NivelEducativo>>($"api/Niveles/plantel/{plantelId}");
+        }
+    }
+
+    // --- CASCADAS ---
+    async Task CambiarPlantel(ChangeEventArgs e) { if (Guid.TryParse(e.Value?.ToString(), out Guid id)) { plantelId = id; niveles = await Http.GetFromJsonAsync<List<NivelEducativo>>($"api/Niveles/plantel/{id}"); } grados = null; grupos = null; materias = null; grupoId = 0; materiaId = Guid.Empty; matriz = null; }
+    async Task CambiarNivel(ChangeEventArgs e) { if (Guid.TryParse(e.Value?.ToString(), out Guid id)) grados = await Http.GetFromJsonAsync<List<Grado>>($"api/Grados/nivel/{id}"); grupos = null; materias = null; grupoId = 0; materiaId = Guid.Empty; matriz = null; }
+    async Task CambiarGrado(ChangeEventArgs e) { if (int.TryParse(e.Value?.ToString(), out int id) && id != 0) { gradoId = id; grupos = await Http.GetFromJsonAsync<List<Grupo>>($"api/Grupos/grado/{id}/ciclo/{cicloActualId}"); } else { grupos = null; materias = null; grupoId = 0; materiaId = Guid.Empty; matriz = null; } }
+
+    async Task CambiarGrupo(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int id) && id != 0)
+        {
+            grupoId = id;
+            materiaId = Guid.Empty; // <-- AGREGA ESTA LÍNEA
+            matriz = null;          // <-- AGREGA ESTA LÍNEA
+            // OJO: Estamos reutilizando inteligentemente el endpoint que hicimos para las Asistencias
+            materias = await Http.GetFromJsonAsync<List<MateriaFiltro>>($"api/Asistencias/materias-filtro?grupoId={grupoId}&cicloId={cicloActualId}");
+        }
+        else { grupoId = 0; materias = null; materiaId = Guid.Empty; matriz = null; }
+    }
+
+    // --- CARGAR MATRIZ ---
+    private async Task CargarMatriz()
+    {
+        cargando = true;
+        try
+        {
+            matriz = await Http.GetFromJsonAsync<MatrizRespuesta>($"api/Calificaciones/matriz?grupoId={grupoId}&materiaId={materiaId}&trimestreSep={trimestreSep}&cicloId={cicloActualId}");
+
+            if (matriz != null)
+            {
+                // Inicializar las celdas en blanco para que Blazor pueda hacer el @bind
+                foreach (var alumno in matriz.Alumnos)
+                {
+                    alumno.CeldasInternas = new List<CeldaFila>();
+                    foreach (var periodo in matriz.Periodos)
+                    {
+                        var notaGuardada = alumno.NotasInternas.FirstOrDefault(n => n.PeriodoInternoId == periodo.Id);
+                        alumno.CeldasInternas.Add(new CeldaFila
+                            {
+                                PeriodoId = periodo.Id,
+                                Valor = notaGuardada?.Nota
+                            });
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", "Error al cargar la matriz. Revisa que el Coordinador haya configurado los periodos de este trimestre.");
+        }
+        cargando = false;
+    }
+
+    // --- GUARDAR UN MES ESPECÍFICO ---
+    private async Task GuardarMes(Guid periodoId)
+    {
+        if (matriz == null) return;
+
+        // Extraer solo las calificaciones que sí tienen un número escrito para ese mes
+        var notasParaGuardar = matriz.Alumnos
+            .Where(a => !a.Confirmado) // Ignoramos a los que ya están cerrados oficialmente
+            .Select(a => new
+            {
+                AlumnoId = a.AlumnoId,
+                Celda = a.CeldasInternas.FirstOrDefault(c => c.PeriodoId == periodoId)
+            })
+            .Where(x => x.Celda != null && x.Celda.Valor.HasValue)
+            .Select(x => new
+            {
+                AlumnoId = x.AlumnoId,
+                Nota = x.Celda!.Valor!.Value
+            }).ToList();
+
+        if (!notasParaGuardar.Any())
+        {
+            await JS.InvokeVoidAsync("alert", "No hay calificaciones capturadas para guardar en este periodo.");
+            return;
+        }
+
+        foreach (var nota in notasParaGuardar)
+        {
+            if (nota.Nota < matriz.EscalaMinima || nota.Nota > matriz.EscalaMaxima)
+            {
+                await JS.InvokeVoidAsync("alert", $"Hay calificaciones inválidas. La escala debe estar entre {matriz.EscalaMinima} y {matriz.EscalaMaxima}.");
+                return; // Frena el guardado
+            }
+        }
+
+        var dto = new
+        {
+            GrupoId = grupoId,
+            MateriaId = materiaId,
+            PeriodoInternoId = periodoId,
+            Calificaciones = notasParaGuardar
+        };
+
+        var res = await Http.PostAsJsonAsync("api/Calificaciones/guardar-internas", dto);
+        if (res.IsSuccessStatusCode) await JS.InvokeVoidAsync("alert", "Calificaciones del periodo guardadas correctamente.");
+        else await JS.InvokeVoidAsync("alert", "Error al guardar el periodo. " + await res.Content.ReadAsStringAsync());
+    }
+
+    // --- BOTÓN MÁGICO: CALCULAR PROMEDIO SEP ---
+    // --- BOTÓN MÁGICO: CALCULAR PROMEDIO SEP ---
+    // NOTA: Le agregamos "async Task" para poder lanzar la alerta de Javascript
+    private async Task CalcularPromedios()
+    {
+        if (matriz == null) return;
+
+        int alumnosIncompletos = 0;
+
+        foreach (var alumno in matriz.Alumnos.Where(a => !a.Confirmado))
+        {
+            var notasValidas = alumno.CeldasInternas.Where(c => c.Valor.HasValue).Select(c => c.Valor!.Value).ToList();
+
+            // REGLA ESTRICTA: Debe tener TODOS los meses capturados
+            if (notasValidas.Count == matriz.Periodos.Count && matriz.Periodos.Count > 0)
+            {
+                decimal promedio = notasValidas.Average();
+
+                if (promedio < matriz.EscalaMinima) promedio = matriz.EscalaMinima;
+
+                if (matriz.UsaDecimales)
+                    alumno.NotaSEP = Math.Round(promedio, 1);
+                else
+                    alumno.NotaSEP = Math.Round(promedio, 0, MidpointRounding.AwayFromZero);
+            }
+            else
+            {
+                // Si le falta aunque sea un mes, se borra su SEP y se suma al contador de errores
+                alumno.NotaSEP = null;
+                alumnosIncompletos++;
+            }
+        }
+
+        if (alumnosIncompletos > 0)
+        {
+            await JS.InvokeVoidAsync("alert", $"Se calculó el promedio sólo para los alumnos completos. Hay {alumnosIncompletos} alumno(s) a los que les faltan calificaciones en algún mes.");
+        }
+    }
+
+    // --- CERRAR Y SELLAR TRIMESTRE ---
+    private async Task SellarTrimestreSEP()
+    {
+        if (matriz == null) return;
+
+        // 1. Validar que el Coordinador ya haya CERRADO todos los meses de este trimestre
+        var periodosAbiertos = matriz.Periodos.Where(p => p.AbiertoParaCaptura).ToList();
+        if (periodosAbiertos.Any())
+        {
+            await JS.InvokeVoidAsync("alert", $"¡Alto! El Coordinador primero debe CERRAR la captura de los meses: {string.Join(", ", periodosAbiertos.Select(p => p.Nombre))}.");
+            return;
+        }
+
+        // 2. Validar que no haya celdas vacías en los alumnos que vamos a sellar
+        var alumnosIncompletos = matriz.Alumnos.Where(a => !a.Confirmado && a.CeldasInternas.Any(c => !c.Valor.HasValue)).ToList();
+        if (alumnosIncompletos.Any())
+        {
+            await JS.InvokeVoidAsync("alert", $"No puedes cerrar el trimestre. El alumno {alumnosIncompletos.First().NombreCompleto} (y tal vez otros) no tiene todas sus calificaciones mensuales capturadas.");
+            return;
+        }
+
+        bool confirmacion = await JS.InvokeAsync<bool>("confirm", "¡Atención! Al confirmar y cerrar el Trimestre Oficial, las calificaciones quedarán bloqueadas y ya no podrás modificarlas. ¿Deseas continuar?");
+        if (!confirmacion) return;
+
+        sellando = true;
+
+        var notasSEP = matriz.Alumnos
+            .Where(a => !a.Confirmado && a.NotaSEP.HasValue)
+            .Select(a => new
+            {
+                AlumnoId = a.AlumnoId,
+                PromedioSugerido = a.NotaSEP!.Value,
+                NotaFinal = a.NotaSEP!.Value
+            }).ToList();
+
+        var dto = new
+        {
+            GrupoId = grupoId,
+            MateriaId = materiaId,
+            CicloId = cicloActualId,
+            Trimestre = trimestreSep,
+            Calificaciones = notasSEP
+        };
+
+        var res = await Http.PostAsJsonAsync("api/Calificaciones/cerrar-sep", dto);
+        sellando = false;
+
+        if (res.IsSuccessStatusCode)
+        {
+            await JS.InvokeVoidAsync("alert", "¡Trimestre sellado con éxito!");
+            await CargarMatriz();
+        }
+        else
+        {
+            await JS.InvokeVoidAsync("alert", "Error al cerrar trimestre: " + await res.Content.ReadAsStringAsync());
+        }
+    }
+}

@@ -32,6 +32,10 @@ namespace Gremelik.core.Entities
 
         public DateTime FechaNacimiento { get; set; }
 
+        [Required]
+        [StringLength(1)]
+        public string Sexo { get; set; } = "M"; // "M" para Masculino, "F" para Femenino
+
         // --- CORRECCIÓN IMPORTANTE: USAMOS GUID ---
         public Guid EscuelaId { get; set; }
 
@@ -39,5 +43,12 @@ namespace Gremelik.core.Entities
         public Escuela? Escuela { get; set; }
 
         public EstatusAlumno Estatus { get; set; } = EstatusAlumno.Activo;
+
+        // --- NUEVO: RELACIÓN PARA QUE ENTITY FRAMEWORK PUEDA NAVEGAR ---
+        public ICollection<Inscripcion> Inscripciones { get; set; } = new List<Inscripcion>();
+
+        // --- NUEVO: MONEDERO ELECTRÓNICO ---
+        // Aquí se guardará el dinero que el papá depositó de más o por adelantado.
+        public decimal SaldoAFavor { get; set; } = 0;
     }
 }

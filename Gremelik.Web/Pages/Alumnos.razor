@@ -1,84 +1,107 @@
 ﻿@page "/alumnos"
 @using Gremelik.core.Entities
+@using Gremelik.core.DTOs
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
+@using System.Text.Json
 @inject HttpClient Http
 @inject Gremelik.Web.Services.TenantService Tenant
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin, Coordinador, Cajero")]
 
-<div class="d-flex justify-content-between align-items-center mb-3">
+<div class="d-flex justify-content-between align-items-center mb-4">
     <h3>
-        Alumnos
+        <i class="bi bi-people-fill text-primary"></i> Directorio de Alumnos
         <small class="text-muted fs-6">(@(Tenant.SubdominioActual?.ToUpper() ?? "VISTA ADMIN"))</small>
     </h3>
+</div>
 
-    <AuthorizeView>
-        <Authorized>
-            <button class="btn btn-primary" @onclick="AbrirModalCrear">
-                <i class="bi bi-person-plus-fill"></i> Nuevo Alumno
-            </button>
-        </Authorized>
-    </AuthorizeView>
+<div class="card shadow-sm border-0 bg-light mb-4">
+    <div class="card-body">
+        <div class="row g-2 align-items-center">
+            <div class="col-md-10">
+                <div class="input-group">
+                    <span class="input-group-text bg-white"><i class="bi bi-search text-muted"></i></span>
+                    <input type="text" class="form-control form-control-lg border-start-0" 
+                           placeholder="Buscar por Nombre, Apellido, Matrícula o CURP..." 
+                           @bind="textoBusqueda" @bind:event="oninput" @onkeyup="EnterBuscar" />
+                </div>
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-primary btn-lg w-100 fw-bold" @onclick="BuscarAlumnos">
+                    Buscar
+                </button>
+            </div>
+        </div>
+    </div>
 </div>
 
 @if (mensajeError != null)
 {
     <div class="alert alert-danger alert-dismissible fade show" role="alert">
         @mensajeError
-        @if (mensajeError.Contains("401"))
-        {
-            <br />
-
-            <a href="login" class="fw-bold">Haga clic aquí para iniciar sesión nuevamente.</a>
-        }
         <button type="button" class="btn-close" @onclick="() => mensajeError = null"></button>
     </div>
 }
 
 @if (cargando)
 {
-    <div class="d-flex justify-content-center my-5">
-        <div class="spinner-border text-primary" role="status">
-            <span class="visually-hidden">Cargando...</span>
-        </div>
+    <div class="text-center my-5"><div class="spinner-border text-primary"></div></div>
+}
+else if (alumnosEncontrados == null)
+{
+    <div class="text-center text-muted my-5 py-5">
+        <i class="bi bi-person-bounding-box display-1 opacity-25"></i>
+        <h5 class="mt-3">Escribe el nombre o matrícula para buscar a un alumno</h5>
     </div>
 }
-else if (alumnos == null || !alumnos.Any())
+else if (!alumnosEncontrados.Any())
 {
-    <div class="alert alert-info">
-        No hay alumnos registrados o no has iniciado sesión para verlos.
+    <div class="alert alert-warning text-center">
+        <i class="bi bi-exclamation-triangle-fill"></i> No se encontró ningún alumno que coincida con "<strong>@textoBusqueda</strong>".
     </div>
 }
 else
 {
-    <div class="table-responsive">
-        <table class="table table-hover align-middle">
+    <div class="table-responsive shadow-sm rounded">
+        <table class="table table-hover align-middle mb-0">
             <thead class="table-light">
                 <tr>
                     <th>Matrícula</th>
                     <th>Nombre Completo</th>
-                    <th>CURP</th>
-                    <th>NIA</th>
+                    <th>Inscripción Actual</th>
+                    <th>CURP / NIA</th>
                     <th>Estatus</th>
-                    <th>Acciones</th>
+                    <th class="text-center">Acciones</th>
                 </tr>
             </thead>
             <tbody>
-                @foreach (var alumno in alumnos)
+                @foreach (var alumno in alumnosEncontrados)
                 {
                     <tr>
-                        <td>@alumno.Matricula</td>
-                        <td>@alumno.Nombre @alumno.PrimerApellido @alumno.SegundoApellido</td>
-                        <td>@alumno.CURP</td>
-                        <td>@alumno.NIA</td>
+                        <td class="fw-bold text-secondary">@alumno.Matricula</td>
+                        <td class="fw-bold text-dark">@alumno.NombreCompleto</td>
                         <td>
-                            <span class="badge @ObtenerClaseEstatus(alumno.Estatus)">
-                                @alumno.Estatus
-                            </span>
+                            <div class="fw-bold text-primary small">@alumno.Plantel - @alumno.Nivel</div>
+                            <div class="text-muted small">@alumno.Grado, Grupo @alumno.Grupo</div>
                         </td>
                         <td>
+                            <div class="small">@alumno.CURP</div>
+                            <div class="text-muted small">NIA: @alumno.NIA</div>
+                        </td>
+                        <td>
+                            <span class="badge @ObtenerClaseEstatus(alumno.Estatus)">@alumno.Estatus</span>
+                        </td>
+                        <td class="text-center">
                             <AuthorizeView>
                                 <Authorized>
-                                    <button class="btn btn-sm btn-outline-secondary">Editar</button>
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-info" @onclick="() => AbrirModal(alumno.Id, ModoVista.Consultar)" title="Consultar Información">
+                                            <i class="bi bi-eye"></i>
+                                        </button>
+                                        <button class="btn btn-outline-warning" @onclick="() => AbrirModal(alumno.Id, ModoVista.Editar)" title="Editar Alumno">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                    </div>
                                 </Authorized>
                             </AuthorizeView>
                         </td>
@@ -89,108 +112,135 @@ else
     </div>
 }
 
-@if (mostrarFormulario)
+@if (modoActual != ModoVista.Ninguno && alumnoSeleccionado != null)
 {
-    <div class="card mt-4 shadow-sm border-primary">
-        <div class="card-header bg-primary text-white d-flex justify-content-between">
-            <span>Registrar Nuevo Alumno</span>
-            <button type="button" class="btn-close btn-close-white" @onclick="() => mostrarFormulario = false"></button>
+    bool soloLectura = modoActual == ModoVista.Consultar;
+
+    <div class="card mt-4 shadow border-dark">
+        <div class="card-header @(soloLectura ? "bg-info" : "bg-warning text-dark") text-white fw-bold d-flex justify-content-between align-items-center">
+            <span>
+                <i class="bi @(soloLectura ? "bi-person-vcard" : "bi-pencil-square")"></i> 
+                @(soloLectura ? "Consultar Detalles del Alumno" : "Editar Alumno")
+            </span>
+            <button type="button" class="btn-close @(soloLectura ? "btn-close-white" : "")" @onclick="CerrarModal"></button>
         </div>
-        <div class="card-body">
-            <EditForm Model="@nuevoAlumno" OnSubmit="GuardarAlumno">
-                <DataAnnotationsValidator />
-                <ValidationSummary />
+        <div class="card-body bg-light">
+            
+            @if (cargandoFormulario)
+            {
+                <div class="text-center my-4"><div class="spinner-border text-secondary"></div></div>
+            }
+            else
+            {
+                <EditForm Model="@alumnoSeleccionado" OnValidSubmit="GuardarEdicion">
+                    <DataAnnotationsValidator />
+                    <ValidationSummary class="text-danger" />
 
-                <div class="row">
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">Nombre</label>
-                        <InputText class="form-control" @bind-Value="nuevoAlumno.Nombre" />
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label fw-bold small text-muted">Nombre</label>
+                            <InputText class="form-control" @bind-Value="alumnoSeleccionado.Nombre" disabled="@soloLectura" />
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label fw-bold small text-muted">Primer Apellido</label>
+                            <InputText class="form-control" @bind-Value="alumnoSeleccionado.PrimerApellido" disabled="@soloLectura" />
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label fw-bold small text-muted">Segundo Apellido</label>
+                            <InputText class="form-control" @bind-Value="alumnoSeleccionado.SegundoApellido" disabled="@soloLectura" />
+                        </div>
                     </div>
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">Primer Apellido</label>
-                        <InputText class="form-control" @bind-Value="nuevoAlumno.PrimerApellido" />
-                    </div>
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">Segundo Apellido</label>
-                        <InputText class="form-control" @bind-Value="nuevoAlumno.SegundoApellido" />
-                    </div>
-                </div>
 
-                <div class="row">
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">Matrícula</label>
-                        <InputText class="form-control" @bind-Value="nuevoAlumno.Matricula" />
+                    <div class="row">
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label fw-bold small text-muted">Matrícula</label>
+                            <InputText class="form-control fw-bold text-muted bg-light" @bind-Value="alumnoSeleccionado.Matricula" disabled="true" />
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label fw-bold small text-muted">CURP</label>
+                            <InputText class="form-control text-uppercase" @bind-Value="alumnoSeleccionado.CURP" maxlength="18" disabled="@soloLectura" />
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label fw-bold small text-muted">NIA</label>
+                            <InputText class="form-control" @bind-Value="alumnoSeleccionado.NIA" disabled="@soloLectura" />
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label fw-bold small text-muted">Sexo</label>
+                            <InputSelect class="form-select" @bind-Value="alumnoSeleccionado.Sexo" disabled="@soloLectura">
+                                <option value="M">Masculino</option>
+                                <option value="F">Femenino</option>
+                            </InputSelect>
+                        </div>
                     </div>
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">CURP</label>
-                        <InputText class="form-control" @bind-Value="nuevoAlumno.CURP" maxlength="18" style="text-transform:uppercase" />
-                    </div>
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">NIA</label>
-                        <InputText class="form-control" @bind-Value="nuevoAlumno.NIA" />
-                    </div>
-                </div>
 
-                <div class="row">
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">Fecha Nacimiento</label>
-                        <InputDate class="form-control" @bind-Value="nuevoAlumno.FechaNacimiento" />
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label fw-bold small text-muted">Fecha Nacimiento</label>
+                            <InputDate class="form-control" @bind-Value="alumnoSeleccionado.FechaNacimiento" disabled="@soloLectura" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label fw-bold small text-muted">Estatus de Alumno</label>
+                            <InputSelect class="form-select bg-light text-muted fw-bold" @bind-Value="alumnoSeleccionado.Estatus" disabled="true">
+                                @foreach (var estatus in Enum.GetValues(typeof(EstatusAlumno)))
+                                {
+                                    <option value="@estatus">@estatus.ToString()</option>
+                                }
+                            </InputSelect>
+                        </div>
                     </div>
-                </div>
 
-                <div class="d-flex gap-2 justify-content-end">
-                    <button type="button" class="btn btn-secondary" @onclick="() => mostrarFormulario = false">Cancelar</button>
-                    <button type="submit" class="btn btn-success">Guardar Alumno</button>
-                </div>
-            </EditForm>
+                    <div class="d-flex gap-2 justify-content-end border-top pt-3 mt-2">
+                        <button type="button" class="btn btn-secondary" @onclick="CerrarModal">
+                            @(soloLectura ? "Cerrar Detalles" : "Cancelar Edición")
+                        </button>
+                        
+                        @if (!soloLectura)
+                        {
+                            <button type="submit" class="btn btn-warning fw-bold" disabled="@guardando">
+                                @if (guardando) { <span class="spinner-border spinner-border-sm me-2"></span> }
+                                <i class="bi bi-save"></i> Guardar Cambios
+                            </button>
+                        }
+                    </div>
+                </EditForm>
+            }
         </div>
     </div>
 }
 
 @code {
-    private Alumno[]? alumnos;
-    private Alumno nuevoAlumno = new()
-        {
-            Nombre = "",
-            PrimerApellido = "",
-            CURP = "",
-            Matricula = "",
-            NIA = "",
-            Usuario = "Sistema",
-            FechaNacimiento = DateTime.Today.AddYears(-5)
-        };
-    private bool mostrarFormulario = false;
-    private string? mensajeError;
-    private bool cargando = true;
+    private List<AlumnoBusquedaDto>? alumnosEncontrados = null; // Inicia nulo para mostrar el mensaje de bienvenida
+    private string textoBusqueda = "";
 
-    protected override async Task OnInitializedAsync()
+    // Gestión del formulario y la vista
+    private enum ModoVista { Ninguno, Consultar, Editar }
+    private ModoVista modoActual = ModoVista.Ninguno;
+    private Alumno? alumnoSeleccionado;
+    
+    private string? mensajeError;
+    private bool cargando = false; // Inicia en false porque no carga nada al abrir
+    private bool cargandoFormulario = false;
+    private bool guardando = false;
+
+    private async Task EnterBuscar(KeyboardEventArgs e)
     {
-        await CargarAlumnos();
+        if (e.Key == "Enter") await BuscarAlumnos();
     }
 
-    private async Task CargarAlumnos()
+    private async Task BuscarAlumnos()
     {
+        if (string.IsNullOrWhiteSpace(textoBusqueda)) return;
+
         cargando = true;
         mensajeError = null;
         try
         {
-            alumnos = await Http.GetFromJsonAsync<Alumno[]>("api/Alumnos");
-        }
-        catch (HttpRequestException ex)
-        {
-            if (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized)
-            {
-                mensajeError = "Sesión expirada o no iniciada (Error 401).";
-            }
-            else
-            {
-                mensajeError = $"Error de conexión: {ex.Message}";
-            }
+            alumnosEncontrados = await Http.GetFromJsonAsync<List<AlumnoBusquedaDto>>($"api/Alumnos/directorio/{textoBusqueda}");
         }
         catch (Exception ex)
         {
-            mensajeError = "Error al intentar cargar la lista.";
-            Console.WriteLine(ex.Message);
+            mensajeError = "Error al intentar buscar. Verifica tu conexión.";
+            alumnosEncontrados = new List<AlumnoBusquedaDto>();
         }
         finally
         {
@@ -198,47 +248,70 @@ else
         }
     }
 
-    private void AbrirModalCrear()
-    {
-        // Reiniciar el formulario
-        nuevoAlumno = new()
-            {
-                Nombre = "",
-                PrimerApellido = "",
-                CURP = "",
-                Matricula = "",
-                NIA = "",
-                Usuario = "Sistema",
-                FechaNacimiento = DateTime.Today.AddYears(-5)
-            };
-        mensajeError = null;
-        mostrarFormulario = true;
-    }
-
-    private async Task GuardarAlumno(EditContext context)
+    private async Task AbrirModal(Guid alumnoId, ModoVista modo)
     {
         mensajeError = null;
-
-        if (!context.Validate()) return;
+        modoActual = modo;
+        cargandoFormulario = true;
+        alumnoSeleccionado = new() { Nombre = "", PrimerApellido = "", CURP = "", Matricula = "", NIA = "", Usuario = "Sistema" }; // Placeholder temporal
 
         try
         {
-            var respuesta = await Http.PostAsJsonAsync("api/Alumnos", nuevoAlumno);
+            // Vamos por el objeto Alumno completo a la base de datos para editarlo
+            var alumnoDb = await Http.GetFromJsonAsync<Alumno>($"api/Alumnos/{alumnoId}");
+            if (alumnoDb != null)
+            {
+                alumnoSeleccionado = alumnoDb;
+            }
+        }
+        catch (Exception)
+        {
+            mensajeError = "Error al cargar los datos completos del alumno.";
+            CerrarModal();
+        }
+        finally
+        {
+            cargandoFormulario = false;
+        }
+    }
+
+    private void CerrarModal()
+    {
+        modoActual = ModoVista.Ninguno;
+        mensajeError = null;
+        alumnoSeleccionado = null;
+    }
+
+    private async Task GuardarEdicion()
+    {
+        if (modoActual != ModoVista.Editar || alumnoSeleccionado == null) return;
+        
+        mensajeError = null;
+        guardando = true;
+
+        try
+        {
+            alumnoSeleccionado.FUM = DateTime.Now;
+            var respuesta = await Http.PutAsJsonAsync($"api/Alumnos/{alumnoSeleccionado.Id}", alumnoSeleccionado);
 
             if (respuesta.IsSuccessStatusCode)
             {
-                mostrarFormulario = false;
-                await CargarAlumnos(); // Recargar lista
+                CerrarModal();
+                await BuscarAlumnos(); // Refrescamos la búsqueda para ver el nombre actualizado
             }
             else
             {
                 var errorMsg = await respuesta.Content.ReadAsStringAsync();
-                mensajeError = $"Error al guardar: {errorMsg}";
+                mensajeError = $"Error al actualizar: {errorMsg}";
             }
         }
         catch (Exception ex)
         {
             mensajeError = $"Error crítico: {ex.Message}";
+        }
+        finally
+        {
+            guardando = false;
         }
     }
 

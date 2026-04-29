@@ -10,7 +10,7 @@ namespace Gremelik.API.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    [Authorize(Roles = "GlobalAdmin, SchoolAdmin")]
+    [Authorize(Roles = "GlobalAdmin, SchoolAdmin, Coordinador, Maestro")]
     public class GruposController : ControllerBase
     {
         private readonly GremelikDbContext _context;
@@ -23,13 +23,26 @@ namespace Gremelik.API.Controllers
         }
 
         // GET: api/Grupos/grado/5/ciclo/10
+        // GET: api/Grupos/grado/5/ciclo/10
         [HttpGet("grado/{gradoId}/ciclo/{cicloId}")]
         public async Task<ActionResult<IEnumerable<Grupo>>> GetGruposPorGrado(int gradoId, int cicloId)
         {
-            return await _context.Grupos
-                .Where(g => g.GradoId == gradoId && g.CicloEscolarId == cicloId)
-                .OrderBy(g => g.Nombre)
-                .ToListAsync();
+            var query = _context.Grupos.Where(g => g.GradoId == gradoId && g.CicloEscolarId == cicloId);
+
+            bool esMaestro = User.IsInRole("Maestro") && !User.IsInRole("GlobalAdmin") && !User.IsInRole("SchoolAdmin") && !User.IsInRole("Coordinador");
+
+            if (esMaestro)
+            {
+                var maestroId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+                var gruposAsignados = _context.AsignacionesMaestros
+                    .Where(a => a.MaestroId == maestroId && a.CicloEscolarId == cicloId && a.Activo)
+                    .Select(a => a.GrupoId)
+                    .Distinct();
+
+                query = query.Where(g => gruposAsignados.Contains(g.Id));
+            }
+
+            return await query.OrderBy(g => g.Nombre).ToListAsync();
         }
 
         // GET: api/Grupos/ciclo/10

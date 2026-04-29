@@ -1,7 +1,10 @@
 ﻿@page "/finanzas/morosos"
 @using Gremelik.core.DTOs
-@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin")]
+@using Gremelik.core.Entities
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin, Coordinador, Maestro")]
 @inject HttpClient Http
+@inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <div class="container-fluid pb-5">
     <div class="d-flex justify-content-between align-items-center mb-4">
@@ -35,8 +38,10 @@
 
         <div class="card shadow-sm border-danger">
             <div class="card-header bg-white fw-bold d-flex justify-content-between align-items-center">
-                <span><i class="bi bi-people-fill text-danger"></i> Alumnos con Pagos Atrasados</span>
-                <button class="btn btn-sm btn-outline-danger"><i class="bi bi-file-earmark-excel"></i> Exportar</button>
+                <span><i class="bi bi-people-fill text-danger"></i> Alumnos con Pagos Atrasados (Clic para desglosar)</span>
+                <button class="btn btn-sm btn-outline-danger" @onclick="ExportarExcel">
+                    <i class="bi bi-file-earmark-excel"></i> Exportar
+                </button>
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
@@ -47,25 +52,32 @@
                                 <th>Alumno</th>
                                 <th class="text-center">Conceptos Vencidos</th>
                                 <th>Deuda Más Antigua</th>
-                                <th class="text-end text-danger">Deuda Total</th>
-                                <th class="text-center">Acciones</th>
+                                <th class="text-end text-danger">Deuda Total Aprox.</th>
                             </tr>
                         </thead>
                         <tbody>
                             @if (!morosos.Any())
                             {
-                                <tr><td colspan="6" class="text-center py-4 text-success fw-bold">¡Felicidades! No hay alumnos morosos.</td></tr>
+                                <tr><td colspan="5" class="text-center py-4 text-success fw-bold">¡Felicidades! No hay alumnos morosos.</td></tr>
                             }
                             else
                             {
                                 @foreach (var m in morosos)
                                 {
-                                    <tr>
+                                    <tr @onclick="() => AlternarDetalle(m.AlumnoId)" style="cursor: pointer;" class="@(alumnoExpandidoId == m.AlumnoId ? "table-danger" : "")">
                                         <td><span class="badge bg-light text-dark border">@m.Matricula</span></td>
-                                        <td class="fw-bold">@m.NombreCompleto</td>
-                                        <td class="text-center">
-                                            <span class="badge bg-danger rounded-pill">@m.CantidadConceptosVencidos</span>
+                                        <td class="fw-bold">
+                                            @m.NombreCompleto
+                                            @if (alumnoExpandidoId == m.AlumnoId)
+                                            {
+                                                <i class="bi bi-chevron-up ms-2 text-muted small"></i>
+                                            }
+                                            else
+                                            {
+                                                <i class="bi bi-chevron-down ms-2 text-muted small"></i>
+                                            }
                                         </td>
+                                        <td class="text-center"><span class="badge bg-danger rounded-pill">@m.CantidadConceptosVencidos</span></td>
                                         <td>
                                             @{
                                                 var diasAtraso = (DateTime.Today - m.FechaDeudaMasAntigua).Days;
@@ -74,10 +86,69 @@
                                             <small class="text-danger fw-bold d-block">Hace @diasAtraso días</small>
                                         </td>
                                         <td class="text-end fw-bold text-danger fs-5">$@m.DeudaTotal.ToString("N2")</td>
-                                        <td class="text-center">
-                                            <a href="/finanzas/caja" class="btn btn-sm btn-primary">Ir a Cobrar</a>
-                                        </td>
                                     </tr>
+
+                                    @if (alumnoExpandidoId == m.AlumnoId)
+                                    {
+                                        <tr>
+                                            <td colspan="5" class="p-0 border-bottom-0">
+                                                <div class="bg-light p-3 border-start border-4 border-danger">
+                                                    @if (cargandoDetalles)
+                                                    {
+                                                        <div class="text-center"><span class="spinner-border spinner-border-sm text-danger"></span> Calculando recargos y becas...</div>
+                                                    }
+                                                    else if (detallesAlumno != null && detallesAlumno.Any())
+                                                    {
+                                                        <h6 class="fw-bold text-dark mb-3"><i class="bi bi-receipt"></i> Desglose Real de Deuda al día de hoy:</h6>
+                                                        <table class="table table-sm table-borderless mb-3 bg-white shadow-sm border rounded">
+                                                            <thead class="border-bottom small text-muted">
+                                                                <tr>
+                                                                    <th class="ps-2" style="width: 40px;">
+                                                                        <input type="checkbox" class="form-check-input" @onchange="AlternarTodasLasDeudas" checked="@TodasDeudasSeleccionadas" />
+                                                                    </th>
+                                                                    <th>Concepto</th>
+                                                                    <th>Vencimiento</th>
+                                                                    <th class="text-end pe-3">Saldo Exacto</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                @foreach (var d in detallesAlumno)
+                                                                {
+                                                                    <tr class="border-bottom @(d.EsRecargoVirtual ? "bg-danger bg-opacity-10" : "")">
+                                                                        <td class="ps-2">
+                                                                            <input type="checkbox" class="form-check-input border-secondary"
+                                                                                   checked="@deudasSeleccionadas.Contains(d.CuentaPorCobrarId)"
+                                                                                   @onchange="@((ChangeEventArgs e) => ToggleDeuda(d.CuentaPorCobrarId, e.Value))" />
+                                                                        </td>
+                                                                        <td class="fw-bold @(d.EsRecargoVirtual ? "text-danger" : "text-dark")">
+                                                                            @d.ConceptoNombre
+                                                                            @if (d.BecaPerdidaPorAtraso)
+                                                                            {
+                                                                                <span class="badge bg-danger ms-1">Beca Cancelada</span>
+                                                                            }
+                                                                        </td>
+                                                                        <td><small>@d.FechaVencimiento.ToShortDateString()</small></td>
+                                                                        <td class="text-end pe-3 fw-bold text-danger">
+                                                                            $@((d.MontoBase - d.DescuentoBecaAplicado - d.TotalPagado).ToString("N2"))
+                                                                        </td>
+                                                                    </tr>
+                                                                }
+                                                            </tbody>
+                                                        </table>
+                                                        <div class="text-end">
+                                                            <button class="btn btn-danger fw-bold shadow-sm" disabled="@(!deudasSeleccionadas.Any())" @onclick="() => EnviarACaja(m.AlumnoId)">
+                                                                <i class="bi bi-cash-coin"></i> Ir a Caja a Pagar (@deudasSeleccionadas.Count)
+                                                            </button>
+                                                        </div>
+                                                    }
+                                                    else
+                                                    {
+                                                        <div class="text-muted small"><i class="bi bi-info-circle"></i> Al verificar, el alumno ya no tiene deudas vencidas en este ciclo.</div>
+                                                    }
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
                                 }
                             }
                         </tbody>
@@ -92,26 +163,147 @@
     List<AlumnoMorosoDto>? morosos;
     bool cargando = true;
 
+    Guid? alumnoExpandidoId;
+    bool cargandoDetalles = false;
+    List<DeudaCalculadaDto>? detallesAlumno;
+    HashSet<Guid> deudasSeleccionadas = new();
+
+    int cicloActualId = 0;
+
+    bool TodasDeudasSeleccionadas => detallesAlumno != null && detallesAlumno.Any() && deudasSeleccionadas.Count == detallesAlumno.Count;
+
     protected override async Task OnInitializedAsync()
     {
         await CargarMorosos();
+        try
+        {
+            var ciclos = await Http.GetFromJsonAsync<List<CicloEscolar>>("api/Ciclos");
+            cicloActualId = ciclos?.FirstOrDefault(c => c.Estatus == EstatusCiclo.Actual)?.Id ?? 1;
+        }
+        catch { }
     }
 
     async Task CargarMorosos()
     {
         cargando = true;
-        try
+        try { morosos = await Http.GetFromJsonAsync<List<AlumnoMorosoDto>>("api/ReportesFinancieros/morosos"); }
+        catch { morosos = null; }
+        finally { cargando = false; }
+    }
+
+    async Task AlternarDetalle(Guid alumnoId)
+    {
+        if (alumnoExpandidoId == alumnoId)
         {
-            morosos = await Http.GetFromJsonAsync<List<AlumnoMorosoDto>>("api/ReportesFinancieros/morosos");
+            alumnoExpandidoId = null;
         }
-        catch (Exception ex)
+        else
         {
-            Console.WriteLine($"Error: {ex.Message}");
-            morosos = null;
+            alumnoExpandidoId = alumnoId;
+            cargandoDetalles = true;
+            deudasSeleccionadas.Clear();
+            detallesAlumno = null;
+
+            try
+            {
+                var todasLasDeudas = await Http.GetFromJsonAsync<List<DeudaCalculadaDto>>($"api/Caja/deudas/{alumnoId}/ciclo/{cicloActualId}");
+                if (todasLasDeudas != null)
+                {
+                    detallesAlumno = todasLasDeudas.Where(d => d.FechaVencimiento.Date < DateTime.Today.Date || d.EsRecargoVirtual).ToList();
+                }
+            }
+            catch { detallesAlumno = new List<DeudaCalculadaDto>(); }
+            finally { cargandoDetalles = false; }
         }
-        finally
+    }
+
+    void ToggleDeuda(Guid deudaId, object? isChecked)
+    {
+        bool check = (bool?)isChecked == true;
+
+        // Buscamos qué fila exacta clickeó el usuario
+        var itemActual = detallesAlumno?.FirstOrDefault(d => d.CuentaPorCobrarId == deudaId);
+        if (itemActual == null) return;
+
+        if (check)
         {
-            cargando = false;
+            deudasSeleccionadas.Add(deudaId);
+
+            if (!itemActual.EsRecargoVirtual)
+            {
+                // Si seleccionó la colegiatura (padre), buscamos y agregamos su recargo (hijo)
+                var recargo = detallesAlumno?.FirstOrDefault(d => d.EsRecargoVirtual && d.DeudaOriginalId == deudaId);
+                if (recargo != null) deudasSeleccionadas.Add(recargo.CuentaPorCobrarId);
+            }
+            else if (itemActual.DeudaOriginalId.HasValue)
+            {
+                // Si seleccionó el recargo (hijo), agregamos obligatoriamente la colegiatura (padre)
+                deudasSeleccionadas.Add(itemActual.DeudaOriginalId.Value);
+            }
         }
+        else
+        {
+            deudasSeleccionadas.Remove(deudaId);
+
+            if (!itemActual.EsRecargoVirtual)
+            {
+                // Si desmarcó la colegiatura (padre), quitamos también su recargo (hijo)
+                var recargo = detallesAlumno?.FirstOrDefault(d => d.EsRecargoVirtual && d.DeudaOriginalId == deudaId);
+                if (recargo != null) deudasSeleccionadas.Remove(recargo.CuentaPorCobrarId);
+            }
+            else if (itemActual.DeudaOriginalId.HasValue)
+            {
+                // Si desmarcó el recargo (hijo), quitamos también la colegiatura (padre)
+                deudasSeleccionadas.Remove(itemActual.DeudaOriginalId.Value);
+            }
+        }
+    }
+
+    void AlternarTodasLasDeudas(ChangeEventArgs e)
+    {
+        if ((bool?)e.Value == true && detallesAlumno != null)
+            deudasSeleccionadas = new HashSet<Guid>(detallesAlumno.Select(d => d.CuentaPorCobrarId));
+        else
+            deudasSeleccionadas.Clear();
+    }
+
+    void EnviarACaja(Guid alumnoId)
+    {
+        var idsEmpaquetados = string.Join(",", deudasSeleccionadas);
+        Nav.NavigateTo($"/finanzas/caja?alumnoId={alumnoId}&conceptos={idsEmpaquetados}");
+    }
+
+    async Task ExportarExcel()
+    {
+        if (morosos == null || !morosos.Any())
+        {
+            await JS.InvokeVoidAsync("alert", "No hay datos para exportar.");
+            return;
+        }
+
+        // 1. Armamos el contenido del archivo
+        var csv = new System.Text.StringBuilder();
+        csv.AppendLine("Matricula,Alumno,Conceptos_Vencidos,Fecha_Deuda_Mas_Antigua,Deuda_Total");
+
+        foreach (var m in morosos)
+        {
+            // Limpiamos las comas del nombre para no romper las columnas del CSV
+            var nombreLimpio = m.NombreCompleto.Replace(",", " ");
+            csv.AppendLine($"{m.Matricula},{nombreLimpio},{m.CantidadConceptosVencidos},{m.FechaDeudaMasAntigua:yyyy-MM-dd},{m.DeudaTotal}");
+        }
+
+        // 2. Lo convertimos a Base64 para mandarlo seguro al navegador
+        var bytes = System.Text.Encoding.UTF8.GetBytes(csv.ToString());
+        var fileBase64 = Convert.ToBase64String(bytes);
+
+        // 3. Ejecutamos un script al vuelo para forzar la descarga
+        await JS.InvokeVoidAsync("eval", $@"
+            var link = document.createElement('a');
+            link.download = 'Reporte_Morosos_{DateTime.Today:yyyyMMdd}.csv';
+            link.href = 'data:text/csv;base64,{fileBase64}';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        ");
     }
 }

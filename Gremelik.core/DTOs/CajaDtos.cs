@@ -70,4 +70,64 @@ namespace Gremelik.core.DTOs
         public decimal TotalCobrado { get; set; }
         public int CantidadOperaciones { get; set; }
     }
+
+    // DTO PRINCIPAL DEL DASHBOARD FINANCIERO
+    public class ResumenFinancieroGlobalDto
+    {
+        public int CicloEscolarId { get; set; }
+        public string CicloNombre { get; set; } = "";
+
+        // Lo que ya entró al banco
+        public decimal TotalCobrado { get; set; }
+
+        // Lo que ya venció y no han pagado (Urgente)
+        public decimal TotalVencido { get; set; }
+
+        // Lo que está programado para cobrarse en el futuro (Proyección)
+        public decimal TotalPorCobrarFuturo { get; set; }
+
+        // La suma de todo (Lo que vale el ciclo escolar)
+        public decimal ValorTotalCiclo => TotalCobrado + TotalVencido + TotalPorCobrarFuturo;
+
+        // Desglose para gráficas
+        public List<DesgloseFinancieroMensualDto> DesgloseMensual { get; set; } = new();
+    }
+
+    public class DesgloseFinancieroMensualDto
+    {
+        public string Mes { get; set; } = "";
+        public int NumeroMes { get; set; }
+
+        public decimal Cobrado { get; set; }
+        public decimal Vencido { get; set; }
+        public decimal Pendiente { get; set; }
+
+        // --- NUEVO: MATEMÁTICA PARA GRÁFICAS Y BARRAS DE AVANCE ---
+        public decimal TotalEsperadoDelMes => Cobrado + Vencido + Pendiente;
+
+        public double PorcentajeAvance => TotalEsperadoDelMes > 0
+            ? (double)(Cobrado / TotalEsperadoDelMes) * 100
+            : 0;
+
+        public double PorcentajeVencido => TotalEsperadoDelMes > 0
+            ? (double)(Vencido / TotalEsperadoDelMes) * 100
+            : 0;
+    }
+
+    public class ConceptoFinancieroMensualDto
+    {
+        public string Concepto { get; set; } = "";
+        public decimal Cobrado { get; set; }
+        public decimal Vencido { get; set; }
+        public decimal Pendiente { get; set; }
+
+        public decimal TotalEsperado => Cobrado + Vencido + Pendiente;
+        public double PorcentajeAvance => TotalEsperado > 0 ? (double)(Cobrado / TotalEsperado) * 100 : 0;
+    }
+
+    public class AplicarSaldoAFavorDto
+    {
+        public Guid AlumnoId { get; set; }
+        public List<Guid> CuentasPorCobrarIds { get; set; } = new();
+    }
 }

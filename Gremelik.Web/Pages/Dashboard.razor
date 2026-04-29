@@ -1,0 +1,212 @@
+﻿@page "/dashboard"
+@using Microsoft.AspNetCore.Authorization
+@using System.Globalization
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin")]
+@inject HttpClient Http
+
+<PageTitle>Dashboard_Director</PageTitle>
+
+<div class="container-fluid pb-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h3 class="fw-bold text-dark mb-0"><i class="bi bi-speedometer2 text-primary me-2"></i> Centro de Mando</h3>
+            <span class="text-muted small">Resumen operativo y financiero</span>
+        </div>
+        <div class="text-end" style="width: 220px;">
+            <label class="fw-bold text-muted small">Fecha de consulta:</label>
+            <input type="date" class="form-control border-primary fw-bold text-primary text-center shadow-sm"
+                   max="@DateTime.Today.ToString("yyyy-MM-dd")"
+                   @bind="fechaSeleccionada" @bind:after="CargarDashboard" />
+        </div>
+    </div>
+
+    @if (cargando)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" style="width: 3rem; height: 3rem;"></div>
+            <div class="mt-2 fw-bold text-muted">Calculando métricas...</div>
+        </div>
+    }
+    else if (resumen != null)
+    {
+        <h5 class="fw-bold text-secondary mb-3"><i class="bi bi-cash-stack me-2"></i> Pulso Financiero</h5>
+        <div class="row g-4 mb-5">
+            <div class="col-md-4">
+                <div class="card border-0 shadow-sm h-100 bg-success bg-opacity-10">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h6 class="text-success fw-bold mb-1">Ingresos del Mes</h6>
+                                <h3 class="fw-bold text-dark mb-0">@resumen.IngresosMes.ToString("C", new CultureInfo("es-MX"))</h3>
+                            </div>
+                            <div class="bg-success text-white rounded d-flex align-items-center justify-content-center" style="width: 48px; height: 48px;">
+                                <i class="bi bi-graph-up-arrow fs-4"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card border-0 shadow-sm h-100 bg-primary bg-opacity-10">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h6 class="text-primary fw-bold mb-1">Corte del Día</h6>
+                                <h3 class="fw-bold text-dark mb-0">@resumen.IngresosHoy.ToString("C", new CultureInfo("es-MX"))</h3>
+                            </div>
+                            <div class="bg-primary text-white rounded d-flex align-items-center justify-content-center" style="width: 48px; height: 48px;">
+                                <i class="bi bi-wallet2 fs-4"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card border-0 shadow-sm h-100 bg-danger bg-opacity-10">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h6 class="text-danger fw-bold mb-1">Cartera Vencida</h6>
+                                <h3 class="fw-bold text-dark mb-0">@resumen.CarteraVencida.ToString("C", new CultureInfo("es-MX"))</h3>
+                            </div>
+                            <div class="bg-danger text-white rounded d-flex align-items-center justify-content-center" style="width: 48px; height: 48px;">
+                                <i class="bi bi-exclamation-triangle fs-4"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-4">
+
+            <div class="col-lg-5">
+                <h5 class="fw-bold text-secondary mb-3"><i class="bi bi-people me-2"></i> Pulso Operativo</h5>
+
+                <div class="card border-0 shadow-sm mb-4">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h6 class="fw-bold text-muted mb-0">Total de Alumnos</h6>
+                            <span class="badge bg-primary fs-6">@resumen.TotalAlumnos</span>
+                        </div>
+                        <hr />
+                        @foreach (var nivel in resumen.AlumnosPorNivel)
+                        {
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="fw-bold text-dark">@nivel.Nivel</span>
+                                <span class="text-muted fw-bold">@nivel.Total <i class="bi bi-person text-secondary"></i></span>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <div class="card border-0 shadow-sm bg-info bg-opacity-10">
+                    <div class="card-body text-center py-4">
+                        <h6 class="text-info-emphasis fw-bold mb-2">Asistencia General del Día</h6>
+                        <h1 class="display-4 fw-bold text-dark mb-0">@resumen.PorcentajeAsistenciaHoy%</h1>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-7">
+                <h5 class="fw-bold text-secondary mb-3"><i class="bi bi-shield-exclamation me-2"></i> Focos Rojos (Académico)</h5>
+
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-header bg-white border-0 pt-4 pb-2">
+                        <h6 class="fw-bold text-danger mb-0"><i class="bi bi-calendar-x me-2"></i>Top 5: Alumnos con más inasistencias</h6>
+                    </div>
+                    <div class="card-body p-0">
+                        @if (resumen.AlumnosEnRiesgo != null && resumen.AlumnosEnRiesgo.Any())
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th class="ps-4">Alumno</th>
+                                            <th class="text-center">Total Faltas</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var alumno in resumen.AlumnosEnRiesgo)
+                                        {
+                                            <tr>
+                                                <td class="ps-4 fw-bold text-dark">@alumno.NombreCompleto</td>
+                                                <td class="text-center">
+                                                    <span class="badge bg-danger rounded-pill px-3 py-2 fs-6">
+                                                        @alumno.TotalIncidencias
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="p-5 text-center text-muted">
+                                <i class="bi bi-emoji-smile fs-1 text-success d-block mb-2"></i>
+                                <span class="fw-bold">No hay alumnos con faltas registradas.</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    public class DashboardRespuestaDto
+    {
+        public decimal IngresosMes { get; set; }
+        public decimal IngresosHoy { get; set; }
+        public decimal CarteraVencida { get; set; }
+        public int TotalAlumnos { get; set; }
+        public decimal PorcentajeAsistenciaHoy { get; set; }
+        public List<NivelMetricaDto> AlumnosPorNivel { get; set; } = new();
+        public List<AlumnoRiesgoDto> AlumnosEnRiesgo { get; set; } = new();
+    }
+    public class NivelMetricaDto { public string Nivel { get; set; } = ""; public int Total { get; set; } }
+    public class AlumnoRiesgoDto { public Guid AlumnoId { get; set; } public string NombreCompleto { get; set; } = ""; public int TotalIncidencias { get; set; } public string Motivo { get; set; } = ""; }
+    public class CicloEscolarBasico { public int Id { get; set; } public int Estatus { get; set; } }
+
+    DashboardRespuestaDto? resumen;
+    bool cargando = true;
+
+    // --- VARIABLE DE FECHA (Inicia en hoy) ---
+    DateTime fechaSeleccionada = DateTime.Today;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarDashboard();
+    }
+
+    // --- NUEVO MÉTODO PARA RECARGAR AL CAMBIAR DE DÍA ---
+    private async Task CargarDashboard()
+    {
+        cargando = true;
+        StateHasChanged(); // Forzamos a que se pinte el spinner de "Calculando"
+
+        try
+        {
+            var ciclos = await Http.GetFromJsonAsync<List<CicloEscolarBasico>>("api/Ciclos");
+            var cicloActivo = ciclos?.FirstOrDefault(c => c.Estatus == 1);
+
+            if (cicloActivo != null)
+            {
+                // Convertimos la fecha a string (yyyy-MM-dd) y la mandamos en la URL
+                string fechaStr = fechaSeleccionada.ToString("yyyy-MM-dd");
+                resumen = await Http.GetFromJsonAsync<DashboardRespuestaDto>($"api/Dashboard/resumen/ciclo/{cicloActivo.Id}?fecha={fechaStr}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Error al cargar el dashboard: " + ex.Message);
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+}

@@ -19,6 +19,10 @@ namespace Gremelik.core.Entities
         // Referencia al concepto original (opcional, por si quieres estadísticas)
         public Guid? ConceptoPagoId { get; set; }
 
+        // --- AGREGA ESTAS DOS LÍNEAS PARA ARREGLAR EL ERROR ---
+        [ForeignKey("ConceptoPagoId")]
+        public ConceptoPago? ConceptoRelacionado { get; set; }
+
         // FECHAS
         public DateTime FechaVencimiento { get; set; }
         public DateTime? FechaPago { get; set; } // Null si no ha pagado

@@ -48,5 +48,15 @@ namespace Gremelik.core.Entities
 
         public Guid EscuelaId { get; set; }
         public int CicloEscolarId { get; set; } // Para reportes de corte de caja por ciclo
+
+        // --- DATOS BANCARIOS (NUEVO) ---
+        [StringLength(50)]
+        public string? Banco { get; set; }
+
+        [StringLength(4)]
+        public string? TerminacionTarjeta { get; set; }
+
+        [StringLength(50)]
+        public string? Autorizacion { get; set; }
     }
 }

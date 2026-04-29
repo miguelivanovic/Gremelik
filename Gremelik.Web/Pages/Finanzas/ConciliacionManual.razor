@@ -1,0 +1,442 @@
+﻿@page "/finanzas/conciliacion-manual"
+@using Gremelik.core.Entities
+@using Gremelik.core.DTOs
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin, Coordinador, Cajero")]
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<div class="container-fluid pb-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3><i class="bi bi-clipboard2-pulse text-warning"></i> Revisión y Conciliación Asistida</h3>
+        <button class="btn btn-outline-dark" @onclick="CargarPendientes"><i class="bi bi-arrow-clockwise"></i> Refrescar Bandeja</button>
+    </div>
+
+    @if (pendientes == null)
+    {
+        <div class="text-center py-5"><div class="spinner-border text-warning" style="width: 3rem; height: 3rem;"></div></div>
+    }
+    else if (!pendientes.Any())
+    {
+        <div class="alert alert-success text-center shadow-sm py-4">
+            <i class="bi bi-check-circle-fill display-4 text-success mb-3"></i>
+            <h4 class="fw-bold">¡Bandeja Limpia!</h4>
+            <p class="mb-0">No hay depósitos bancarios pendientes de conciliar.</p>
+        </div>
+    }
+    else
+    {
+        @if (Sugerencias.Any())
+        {
+            <div class="card shadow-sm border-success mb-4">
+                <div class="card-header bg-success text-white fw-bold d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-robot"></i> 1. Depósitos Identificados (Listos para Aprobar)</span>
+                    <span class="badge bg-light text-success fs-6">@Sugerencias.Count() coincidencias</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                        <table class="table table-hover align-middle mb-0 small">
+                            <thead class="table-light sticky-top">
+                                <tr>
+                                    <th class="ps-3" style="width: 50px;">
+                                        <input class="form-check-input border-secondary" type="checkbox" @onchange="AlternarTodos" checked="@TodosSeleccionados">
+                                    </th>
+                                    <th>Fecha</th>
+                                    <th>Concepto Bancario (Rastreo)</th>
+                                    <th>Sugerencia Sistema</th>
+                                    <th class="text-end pe-4">Monto</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var tx in Sugerencias)
+                                {
+                                    <tr class="@(SeleccionadosMasivos.Contains(tx.Id) ? "table-success" : "")">
+                                        <td class="ps-3">
+                                            <input class="form-check-input border-success" type="checkbox"
+                                                   checked="@SeleccionadosMasivos.Contains(tx.Id)"
+                                                   @onchange="@((ChangeEventArgs e) => AlternarSeleccion(tx.Id, e.Value))">
+                                        </td>
+                                        <td>@tx.FechaPago.ToShortDateString()</td>
+                                        <td>
+                                            <strong>@tx.ReferenciaBancaria</strong><br />
+                                            <small class="text-muted">@tx.ClaveRastreo</small>
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-success bg-opacity-10 text-success border border-success"><i class="bi bi-person"></i> @tx.MatriculaSugerida</span><br />
+                                            <small class="fw-bold">@tx.NombreSugerido</small>
+                                        </td>
+                                        <td class="text-end pe-4 fw-bold text-success">$@tx.Monto.ToString("N2")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="card-footer bg-light text-end">
+                    <button class="btn btn-success fw-bold shadow-sm" @onclick="AprobarMasivo" disabled="@(!SeleccionadosMasivos.Any() || procesando)">
+                        @if (procesando)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2"></span>
+                        }
+                        <i class="bi bi-check-all"></i> Aprobar y Cobrar @SeleccionadosMasivos.Count Seleccionados
+                    </button>
+                </div>
+            </div>
+        }
+
+        @if (Huerfanos.Any() || transaccionActiva != null)
+        {
+            <div class="row">
+                <div class="col-lg-5">
+                    <div class="card shadow-sm border-warning mb-4">
+                        <div class="card-header bg-warning text-dark fw-bold">
+                            <i class="bi bi-search"></i> 2. Depósitos Sin Identificar
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                                <table class="table table-hover align-middle mb-0 small">
+                                    <thead class="table-light sticky-top">
+                                        <tr>
+                                            <th class="ps-3">Referencia</th>
+                                            <th class="text-end">Monto</th>
+                                            <th class="text-center pe-2">Acción</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var tx in Huerfanos)
+                                        {
+                                            <tr class="@(transaccionActiva?.Id == tx.Id ? "table-warning" : "")">
+                                                <td class="ps-3">
+                                                    <strong>@tx.ReferenciaBancaria</strong><br />
+                                                    <small class="text-muted">@tx.FechaPago.ToShortDateString()</small>
+                                                </td>
+                                                <td class="text-end fw-bold text-primary">$@tx.Monto.ToString("N2")</td>
+                                                <td class="text-center pe-2">
+                                                    <div class="btn-group btn-group-sm">
+                                                        <button class="btn btn-outline-dark" @onclick="() => SeleccionarTransaccion(tx)" title="Resolver">
+                                                            <i class="bi bi-arrow-right"></i>
+                                                        </button>
+                                                        <button class="btn btn-outline-danger" @onclick="() => DescartarTransaccion(tx.Id)" title="Descartar Depósito">
+                                                            <i class="bi bi-trash"></i>
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-lg-7">
+                    @if (transaccionActiva != null)
+                    {
+                        <div class="card shadow border-dark">
+                            <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                                <span class="fw-bold">Resolviendo Depósito de $@transaccionActiva.Monto.ToString("N2")</span>
+                                <button class="btn btn-sm btn-danger" @onclick="CerrarPanel"><i class="bi bi-x-lg"></i></button>
+                            </div>
+                            <div class="card-body bg-light">
+                                <div class="row mb-3 align-items-end">
+                                    <div class="col-md-7">
+                                        <label class="fw-bold small text-muted">Buscar o cambiar Alumno (Matrícula / Nombre)</label>
+                                        <div class="input-group">
+                                            <input type="text" class="form-control" placeholder="Ej. A-12345" @bind="textoBusqueda" @onkeyup="@EnterBuscar" />
+                                            <button class="btn btn-primary" @onclick="BuscarAlumno"><i class="bi bi-search"></i></button>
+                                        </div>
+                                        @if (resultadosBusqueda != null && resultadosBusqueda.Any())
+                                        {
+                                            <div class="list-group mt-1 shadow position-absolute z-3" style="width: 90%;">
+                                                @foreach (var a in resultadosBusqueda)
+                                                {
+                                                    <button class="list-group-item list-group-item-action" @onclick="() => SeleccionarAlumno(a)">
+                                                        <strong>@a.PrimerApellido @a.SegundoApellido @a.Nombre</strong> <small class="text-primary">(@a.Matricula)</small>
+                                                    </button>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                    <div class="col-md-5">
+                                        @if (alumnoSeleccionado != null)
+                                        {
+                                            <div class="p-2 border border-success rounded bg-white text-success">
+                                                <i class="bi bi-person-check-fill"></i> <strong>@alumnoSeleccionado.Matricula</strong><br />
+                                                <small>@alumnoSeleccionado.Nombre @alumnoSeleccionado.PrimerApellido</small>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+
+                                @if (alumnoSeleccionado != null)
+                                {
+                                    <div class="card shadow-sm mt-4">
+                                        <div class="card-header bg-white border-bottom">
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <span class="fw-bold"><i class="bi bi-list-check"></i> Repartir los $@transaccionActiva.Monto.ToString("N2")</span>
+                                                <select class="form-select form-select-sm w-auto" @onchange="CambiarCiclo">
+                                                    <option value="0">-- Cambiar Ciclo --</option>
+                                                    @if (ciclos != null)
+                                                    {
+                                                        foreach (var c in ciclos)
+                                                        {
+                                                            <option value="@c.Id">@c.Nombre</option>
+                                                        }
+                                                    }
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="card-body p-0">
+                                            @if (deudas == null)
+                                            {
+                                                <div class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary"></div></div>
+                                            }
+                                            else if (!deudas.Any())
+                                            {
+                                                <div class="text-center py-3 text-muted">Este alumno no tiene deudas en este ciclo.</div>
+                                            }
+                                            else
+                                            {
+                                                <table class="table table-sm table-borderless mb-0 align-middle">
+                                                    <thead class="border-bottom text-muted small">
+                                                        <tr><th class="ps-3">Concepto</th><th>Vence</th><th class="text-end">Saldo Actual</th><th class="text-end pe-3" style="width: 150px;">Abono</th></tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        @foreach (var d in deudas)
+                                                        {
+                                                            <tr class="border-bottom @(d.Datos.EsRecargoVirtual ? "bg-danger bg-opacity-10" : "")">
+                                                                <td class="ps-3 fw-bold @(d.Datos.EsRecargoVirtual ? "text-danger" : "text-dark")">
+                                                                    @d.Datos.ConceptoNombre
+                                                                    @if (d.Datos.BecaPerdidaPorAtraso)
+                                                                    {
+                                                                        <span class="badge bg-danger ms-1" title="Perdió la beca por pago tardío">Beca Cancelada</span>
+                                                                    }
+                                                                </td>
+                                                                <td><small>@d.Datos.FechaVencimiento.ToShortDateString()</small></td>
+                                                                <td class="text-end text-danger">$@d.SaldoActual.ToString("N2")</td>
+                                                                <td class="pe-3">
+                                                                    <input type="number" class="form-control text-end fw-bold text-primary form-control-sm" step="0.01" min="0" max="@d.SaldoActual" @bind="d.MontoAAplicar" @bind:event="oninput" />
+                                                                </td>
+                                                            </tr>
+                                                        }
+                                                    </tbody>
+                                                </table>
+                                            }
+                                        </div>
+                                        <div class="card-footer bg-light text-end">
+                                            <div class="mb-2">
+                                                <span class="text-muted">Total Repartido:</span>
+                                                <span class="fs-5 fw-bold ms-2 $@((MontoRepartido == transaccionActiva.Monto) ? "text-success" : "text-danger")">$@MontoRepartido.ToString("N2")</span>
+                                            </div>
+                                            <button class="btn btn-success w-100 fw-bold" @onclick="ResolverConciliacion" disabled="@(MontoRepartido != transaccionActiva.Monto)">
+                                                <i class="bi bi-check-all"></i> APLICAR PAGO
+                                            </button>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="text-center text-muted py-5 mt-5">
+                            <i class="bi bi-arrow-left-square display-1 opacity-25"></i>
+                            <p class="mt-3">Selecciona un depósito "Sin Identificar" para conciliarlo o descartarlo.</p>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    }
+</div>
+
+@code {
+
+
+    // 1. AHORA USAMOS EL DTO DEL CEREBRO
+    class DeudaConciliacionUI
+    {
+        public DeudaCalculadaDto Datos { get; set; } = new();
+        public decimal SaldoActual => Datos.MontoBase - Datos.DescuentoBecaAplicado - Datos.TotalPagado;
+        public decimal MontoAAplicar { get; set; } = 0;
+    }
+
+    List<TransaccionPendienteDto>? pendientes;
+
+    // Filtros visuales para las tablas
+    IEnumerable<TransaccionPendienteDto> Sugerencias => pendientes?.Where(t => !string.IsNullOrEmpty(t.MatriculaSugerida)) ?? new List<TransaccionPendienteDto>();
+    IEnumerable<TransaccionPendienteDto> Huerfanos => pendientes?.Where(t => string.IsNullOrEmpty(t.MatriculaSugerida)) ?? new List<TransaccionPendienteDto>();
+
+    // Para la tabla masiva
+    HashSet<Guid> SeleccionadosMasivos = new();
+    bool TodosSeleccionados => Sugerencias.Any() && SeleccionadosMasivos.Count == Sugerencias.Count();
+    bool procesando = false;
+
+    // Para el panel manual
+    TransaccionPendienteDto? transaccionActiva;
+    string textoBusqueda = "";
+    List<Alumno>? resultadosBusqueda;
+    Alumno? alumnoSeleccionado;
+    List<CicloEscolar>? ciclos;
+    int cicloId = 0;
+    List<DeudaConciliacionUI>? deudas;
+    decimal MontoRepartido => deudas?.Sum(x => x.MontoAAplicar) ?? 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarPendientes();
+        try { var todosCiclos = await Http.GetFromJsonAsync<List<CicloEscolar>>("api/Ciclos"); if (todosCiclos != null) ciclos = todosCiclos.OrderByDescending(c => c.FechaInicio).ToList(); } catch { }
+    }
+
+    async Task CargarPendientes()
+    {
+        pendientes = await Http.GetFromJsonAsync<List<TransaccionPendienteDto>>("api/Conciliacion/pendientes");
+        SeleccionadosMasivos.Clear();
+        CerrarPanel();
+    }
+
+    // --- LÓGICA MASIVA ---
+    void AlternarSeleccion(Guid id, object? isChecked)
+    {
+        if ((bool?)isChecked == true) SeleccionadosMasivos.Add(id);
+        else SeleccionadosMasivos.Remove(id);
+    }
+
+    void AlternarTodos(ChangeEventArgs e)
+    {
+        if ((bool?)e.Value == true) SeleccionadosMasivos = new HashSet<Guid>(Sugerencias.Select(t => t.Id));
+        else SeleccionadosMasivos.Clear();
+    }
+
+    async Task AprobarMasivo()
+    {
+        if (!SeleccionadosMasivos.Any() || !await JS.InvokeAsync<bool>("confirm", $"¿Cobrar automáticamente los {SeleccionadosMasivos.Count} depósitos seleccionados a las deudas más antiguas de cada alumno?")) return;
+
+        procesando = true;
+        var response = await Http.PostAsJsonAsync("api/Conciliacion/aprobar-masivas", SeleccionadosMasivos.ToList());
+        if (response.IsSuccessStatusCode)
+        {
+            await JS.InvokeVoidAsync("alert", "✅ Pagos aplicados exitosamente.");
+            await CargarPendientes();
+        }
+        else { await JS.InvokeVoidAsync("alert", "Error al aplicar masivo."); }
+        procesando = false;
+    }
+
+    // --- LÓGICA MANUAL Y DESCARTAR ---
+    void SeleccionarTransaccion(TransaccionPendienteDto tx)
+    {
+        transaccionActiva = tx; alumnoSeleccionado = null; textoBusqueda = ""; resultadosBusqueda = null; deudas = null;
+    }
+
+    void CerrarPanel() { transaccionActiva = null; alumnoSeleccionado = null; }
+
+    async Task DescartarTransaccion(Guid id)
+    {
+        if (await JS.InvokeAsync<bool>("confirm", "⚠️ ¿Estás seguro de ELIMINAR este depósito de la bandeja? (No se borrará del banco, solo del sistema)."))
+        {
+            var res = await Http.DeleteAsync($"api/Conciliacion/descartar/{id}");
+            if (res.IsSuccessStatusCode) await CargarPendientes();
+            else await JS.InvokeVoidAsync("alert", "Error al descartar.");
+        }
+    }
+
+    async Task BuscarAlumno()
+    {
+        if (string.IsNullOrWhiteSpace(textoBusqueda)) return;
+        resultadosBusqueda = await Http.GetFromJsonAsync<List<Alumno>>($"api/Alumnos/buscar/{textoBusqueda}");
+    }
+    async Task EnterBuscar(KeyboardEventArgs e) { if (e.Key == "Enter") await BuscarAlumno(); }
+
+    async Task SeleccionarAlumno(Alumno a)
+    {
+        alumnoSeleccionado = a; resultadosBusqueda = null; textoBusqueda = "";
+        if (ciclos != null && ciclos.Any() && cicloId == 0) cicloId = ciclos.FirstOrDefault(c => c.Estatus == EstatusCiclo.Actual)?.Id ?? ciclos.First().Id;
+        await CargarDeudas();
+    }
+
+    async Task CambiarCiclo(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int id)) { cicloId = id; await CargarDeudas(); }
+    }
+
+    async Task CargarDeudas()
+    {
+        if (alumnoSeleccionado == null || cicloId == 0 || transaccionActiva == null) return;
+
+        // MANDAMOS LA FECHA EXACTA DEL DEPÓSITO BANCARIO AL CEREBRO
+        var fechaBanco = transaccionActiva.FechaPago.ToString("yyyy-MM-dd");
+
+        var rawDeudas = await Http.GetFromJsonAsync<List<DeudaCalculadaDto>>(
+            $"api/Conciliacion/deudas-calculadas/{alumnoSeleccionado.Id}/ciclo/{cicloId}/fecha/{fechaBanco}");
+
+        if (rawDeudas != null)
+        {
+            deudas = rawDeudas.Select(x => new DeudaConciliacionUI { Datos = x, MontoAAplicar = 0 }).ToList();
+
+            // --- MAGIA UX: AUTO-REPARTIR EL DINERO INTELIGENTEMENTE ---
+            decimal sobrante = transaccionActiva.Monto;
+
+            // Ordenamos en memoria: Recargos primero, luego por fecha de vencimiento
+            var ordenadas = deudas
+                .OrderBy(d => d.Datos.FechaVencimiento)
+                .ThenByDescending(d => d.Datos.EsRecargoVirtual || d.Datos.ConceptoNombre.StartsWith("Recargo"))
+                .ToList();
+
+            foreach (var d in ordenadas)
+            {
+                if (sobrante <= 0) break;
+                decimal abonar = Math.Min(sobrante, d.SaldoActual);
+                d.MontoAAplicar = abonar; // Auto-llenamos la casilla de texto en pantalla
+                sobrante -= abonar;
+            }
+            // ----------------------------------------------------------
+        }
+    }
+
+    async Task ResolverConciliacion()
+    {
+        if (transaccionActiva == null || alumnoSeleccionado == null || MontoRepartido != transaccionActiva.Monto) return;
+
+        // --- NUEVA VALIDACIÓN: JERARQUÍA DE PAGO ---
+        // Revisamos todas las deudas normales que están recibiendo un abono
+        var deudasBaseAbonadas = deudas!.Where(d => !d.Datos.EsRecargoVirtual && d.MontoAAplicar > 0).ToList();
+
+        foreach (var baseAbonada in deudasBaseAbonadas)
+        {
+            // Buscamos si existe un recargo asociado a esta deuda (buscamos por DeudaOriginalId)
+            var recargoAsociado = deudas!.FirstOrDefault(d => d.Datos.EsRecargoVirtual && d.Datos.DeudaOriginalId == baseAbonada.Datos.CuentaPorCobrarId);
+
+            // Si existe un recargo asociado, y no le están pagando el saldo completo...
+            if (recargoAsociado != null && recargoAsociado.MontoAAplicar < recargoAsociado.SaldoActual)
+            {
+                await JS.InvokeVoidAsync("alert", $"⚠️ JERARQUÍA DE COBRO:\n\nNo puedes abonar a '{baseAbonada.Datos.ConceptoNombre}' sin antes cubrir por completo su recargo asociado de ${recargoAsociado.SaldoActual:N2}.\n\nPor favor, asigna primero el dinero al recargo.");
+                return; // Bloqueamos el proceso
+            }
+        }
+        // -------------------------------------------
+
+        if (!await JS.InvokeAsync<bool>("confirm", "¿Aplicar el abono manual?")) return;
+
+        // 3. EMPACAMOS TODO EN EL DTO PARA EL BACKEND
+        var dto = new ResolverConciliacionDto
+            {
+                TransaccionId = transaccionActiva.Id,
+                AlumnoId = alumnoSeleccionado.Id,
+                Conceptos = deudas!.Where(x => x.MontoAAplicar > 0).Select(x => new DetalleConciliacionDto
+                {
+                    CuentaPorCobrarId = x.Datos.CuentaPorCobrarId,
+                    MontoAAplicar = x.MontoAAplicar,
+                    EsRecargoVirtual = x.Datos.EsRecargoVirtual,
+                    DeudaOriginalId = x.Datos.DeudaOriginalId,
+                    ConceptoPagoId = x.Datos.ConceptoPagoId,
+                    ConceptoNombreVirtual = x.Datos.ConceptoNombre,
+                    DescuentoBecaFinalCalculado = x.Datos.DescuentoBecaAplicado
+                }).ToList()
+            };
+
+        var response = await Http.PostAsJsonAsync("api/Conciliacion/resolver-manual", dto);
+        if (response.IsSuccessStatusCode) { CerrarPanel(); await CargarPendientes(); }
+        else { await JS.InvokeVoidAsync("alert", "Error al conciliar."); }
+    }
+}

@@ -1,7 +1,7 @@
 ﻿@page "/configuracion/oferta"
 @using Gremelik.core.Entities
 @using Microsoft.AspNetCore.Authorization
-@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin")]
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin, Coordinador")]
 @inject HttpClient Http
 @inject IJSRuntime JS
 
@@ -54,7 +54,12 @@
                                         class="list-group-item list-group-item-action d-flex justify-content-between align-items-center @(nivelSeleccionado?.Id == nivel.Id ? "active" : "")"
                                         @onclick="() => SeleccionarNivel(nivel)">
 
-                                    @nivel.Nombre
+                                    <div>
+                                        <strong>@nivel.Nombre</strong>
+                                        <small class="d-block @(nivelSeleccionado?.Id == nivel.Id ? "text-light" : "text-muted")" style="font-size:0.7em">
+                                            RVOE: @(string.IsNullOrEmpty(nivel.RVOE) ? "N/A" : nivel.RVOE) | SAT: @nivel.NivelSAT
+                                        </small>
+                                    </div>
 
                                     @if (nivelSeleccionado?.Id != nivel.Id)
                                     {
@@ -142,21 +147,37 @@
 {
     <div class="modal d-block" style="background: rgba(0,0,0,0.5)">
         <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
+            <div class="modal-content border-primary">
+                <div class="modal-header bg-primary text-white">
                     <h5 class="modal-title">Nuevo Nivel Educativo</h5>
-                    <button type="button" class="btn-close" @onclick="() => mostrarModalNivel = false"></button>
+                    <button type="button" class="btn-close btn-close-white" @onclick="() => mostrarModalNivel = false"></button>
                 </div>
                 <div class="modal-body">
                     <div class="mb-3">
-                        <label>Nombre (Ej. Primaria, Bachillerato)</label>
+                        <label class="fw-bold">Nombre Interno (Ej. Primaria Bilingüe)</label>
                         <input class="form-control" @bind="nuevoNivelNombre" />
                     </div>
-                    <div class="mb-3">
-                        <label>RVOE (Opcional)</label>
-                        <input class="form-control" @bind="nuevoNivelRVOE" />
+
+                    <div class="mb-3 p-3 bg-light border rounded">
+                        <label class="fw-bold text-primary"><i class="bi bi-bank"></i> Configuración Oficial (SEP/SAT)</label>
+                        <div class="mt-2 mb-2">
+                            <label class="small">RVOE (Clave de Validez Oficial)</label>
+                            <input class="form-control form-control-sm" @bind="nuevoNivelRVOE" placeholder="Ej: 10PES0028H" />
+                        </div>
+                        <div>
+                            <label class="small text-danger fw-bold">Nivel SAT (Requerido para CFDI 4.0) *</label>
+                            <select class="form-select form-select-sm border-danger" @bind="nuevoNivelSAT">
+                                <option value="">-- Selecciona el catálogo oficial --</option>
+                                <option value="Preescolar">Preescolar</option>
+                                <option value="Primaria">Primaria</option>
+                                <option value="Secundaria">Secundaria</option>
+                                <option value="Profesional técnico">Profesional técnico</option>
+                                <option value="Bachillerato o su equivalente">Bachillerato o su equivalente</option>
+                            </select>
+                        </div>
                     </div>
-                    <button class="btn btn-primary w-100" @onclick="GuardarNivel">Guardar</button>
+
+                    <button class="btn btn-primary w-100 fw-bold" @onclick="GuardarNivel" disabled="@(string.IsNullOrEmpty(nuevoNivelSAT))">Guardar Nivel</button>
                 </div>
             </div>
         </div>
@@ -164,19 +185,17 @@
 }
 
 @code {
-    // Listas
     List<Plantel>? planteles;
     List<NivelEducativo>? niveles;
     List<Grado>? grados;
 
-    // Selecciones
     Guid plantelSeleccionadoId = Guid.Empty;
     NivelEducativo? nivelSeleccionado;
 
-    // Variables de formularios
     bool mostrarModalNivel = false;
     string nuevoNivelNombre = "";
     string nuevoNivelRVOE = "";
+    string nuevoNivelSAT = ""; // NUEVO CAMPO SAT
 
     int nuevoGradoNumero = 1;
     string nuevoGradoNombre = "";
@@ -186,54 +205,52 @@
         planteles = await Http.GetFromJsonAsync<List<Plantel>>("api/Planteles");
     }
 
-    // 1. Cargar Niveles cuando cambia el select
     private async Task CargarNivelesDelPlantel(ChangeEventArgs e)
     {
         if (Guid.TryParse(e.Value?.ToString(), out Guid id))
         {
             plantelSeleccionadoId = id;
-            nivelSeleccionado = null; // Reset
+            nivelSeleccionado = null;
             grados = null;
             niveles = await Http.GetFromJsonAsync<List<NivelEducativo>>($"api/Niveles/plantel/{id}");
         }
     }
 
-    // 2. Cargar Grados cuando tocas un nivel
     private async Task SeleccionarNivel(NivelEducativo nivel)
     {
         nivelSeleccionado = nivel;
         grados = await Http.GetFromJsonAsync<List<Grado>>($"api/Grados/nivel/{nivel.Id}");
     }
 
-    // --- LOGICA DE NIVELES ---
     private void AbrirModalNivel()
     {
         nuevoNivelNombre = "";
+        nuevoNivelRVOE = "";
+        nuevoNivelSAT = "";
         mostrarModalNivel = true;
     }
 
     private async Task GuardarNivel()
     {
-        if (string.IsNullOrWhiteSpace(nuevoNivelNombre)) return;
+        if (string.IsNullOrWhiteSpace(nuevoNivelNombre) || string.IsNullOrWhiteSpace(nuevoNivelSAT)) return;
 
         var nuevo = new NivelEducativo
             {
                 Nombre = nuevoNivelNombre,
                 RVOE = nuevoNivelRVOE,
+                NivelSAT = nuevoNivelSAT, // SE MANDA AL BACKEND
                 PlantelId = plantelSeleccionadoId,
-                Orden = (niveles?.Count ?? 0) + 1 // Lo ponemos al final
+                Orden = (niveles?.Count ?? 0) + 1
             };
 
         var res = await Http.PostAsJsonAsync("api/Niveles", nuevo);
         if (res.IsSuccessStatusCode)
         {
             mostrarModalNivel = false;
-            // Recargar lista
             niveles = await Http.GetFromJsonAsync<List<NivelEducativo>>($"api/Niveles/plantel/{plantelSeleccionadoId}");
         }
     }
 
-    // --- LOGICA DE GRADOS ---
     private async Task AgregarGradoManual()
     {
         if (nivelSeleccionado == null) return;
@@ -242,13 +259,12 @@
             {
                 Nombre = nuevoGradoNombre,
                 Numero = nuevoGradoNumero,
-                NivelEducativoId = (Guid)nivelSeleccionado.Id // Casting explícito si Id es objeto, o directo si es Guid
+                NivelEducativoId = (Guid)nivelSeleccionado.Id
             };
 
         await Http.PostAsJsonAsync("api/Grados", grado);
-        await SeleccionarNivel(nivelSeleccionado); // Recargar
+        await SeleccionarNivel(nivelSeleccionado);
 
-        // Preparar siguiente
         nuevoGradoNumero++;
         nuevoGradoNombre = "";
     }
@@ -257,7 +273,6 @@
     {
         if (nivelSeleccionado == null) return;
 
-        // Preguntar cuántos grados (simple prompt JS)
         string input = await JS.InvokeAsync<string>("prompt", "¿Cuántos grados tiene este nivel? (Ej: 6 para Primaria)", "3");
 
         if (int.TryParse(input, out int total) && total > 0)

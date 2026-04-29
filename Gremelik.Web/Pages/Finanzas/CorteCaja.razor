@@ -1,6 +1,6 @@
 ﻿@page "/finanzas/corte-caja"
 @using Gremelik.core.DTOs
-@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin")]
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin, Coordinador")]
 @inject HttpClient Http
 @inject IJSRuntime JS
 
@@ -191,12 +191,15 @@
     private async Task ImprimirCortePdf()
     {
         var fechaStr = fechaSeleccionada.ToString("yyyy-MM-dd");
-        // Si no seleccionó cajero, mandamos "TODOS"
         var paramCajero = string.IsNullOrEmpty(cajeroSeleccionado) ? "TODOS" : cajeroSeleccionado;
 
-        var urlPdf = $"api/Reportes/corte-caja?fecha={fechaStr}&cajero={paramCajero}";
+        // AHORA SÍ LE PEGAMOS AL ENDPOINT REAL QUE ACABAMOS DE CREAR
+        var tenantId = await Http.GetStringAsync("api/Reportes/tenant");
+        tenantId = tenantId.Trim('"'); // Quitamos las comillas del JSON
 
-        // Abrimos el PDF en una pestaña nueva
+        // Le agregamos el {Http.BaseAddress} al principio
+        var urlPdf = $"{Http.BaseAddress}api/Reportes/corte-caja?fecha={fechaStr}&cajero={paramCajero}&tenantId={tenantId}";
+
         await JS.InvokeVoidAsync("window.open", urlPdf, "_blank");
     }
 }

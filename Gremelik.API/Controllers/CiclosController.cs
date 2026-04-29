@@ -10,7 +10,7 @@ namespace Gremelik.API.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    [Authorize(Roles = "GlobalAdmin, SchoolAdmin")]
+    [Authorize(Roles = "GlobalAdmin, SchoolAdmin, Coordinador, Maestro")]
     public class CiclosController : ControllerBase
     {
         private readonly GremelikDbContext _context;

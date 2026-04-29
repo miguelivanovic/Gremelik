@@ -1,6 +1,7 @@
 ﻿@page "/finanzas/asignacion-cargos"
+@page "/finanzas/asignacion-cargos/{IdParam:guid}"
 @using Gremelik.core.Entities
-@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin")]
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin, Coordinador, Cajero")]
 @inject HttpClient Http
 @inject IJSRuntime JS
 
@@ -74,8 +75,8 @@
                         {
                             <div class="mb-3">
                                 <label class="form-label fw-bold">Plan de Colegiatura</label>
-                                <select class="form-select border-success" @bind="planSeleccionadoId">
-                                    <option value="@Guid.Empty">-- Selecciona Modalidad --</option>
+                                <select class="form-select border-success" value="@planSeleccionadoId" @onchange="CambiarPlan">
+                                    <option value="@Guid.Empty">-- Omitir Plan de Colegiaturas por ahora --</option>
                                     @if (planes != null)
                                     {
                                         foreach (var p in planes)
@@ -290,10 +291,30 @@
     // ... tus otras variables ...
     int? gradoAlumnoId = 0; // <--- Aquí guardaremos en qué grado va
 
+    [Parameter]
+    public Guid? IdParam { get; set; }
+
     protected override async Task OnInitializedAsync()
     {
         var todos = await Http.GetFromJsonAsync<List<CicloEscolar>>("api/Ciclos");
         if (todos != null) ciclos = todos.OrderByDescending(c => c.FechaInicio).ToList();
+
+        // MAGIA: Si el usuario llegó desde la auditoría
+        if (IdParam.HasValue)
+        {
+            // Buscamos al alumno directo por ID en lugar del texto
+            buscando = true;
+            try
+            {
+                var alumnoDirecto = await Http.GetFromJsonAsync<Alumno>($"api/Alumnos/{IdParam.Value}");
+                if (alumnoDirecto != null)
+                {
+                    await SeleccionarAlumno(alumnoDirecto);
+                }
+            }
+            catch { }
+            buscando = false;
+        }
     }
 
     // --- BÚSQUEDA ---
@@ -336,9 +357,21 @@
 
     async Task CambiarCiclo(ChangeEventArgs e)
     {
-        if (int.TryParse(e.Value?.ToString(), out int id))
+        if (int.TryParse(e.Value?.ToString(), out int id) && id != 0)
         {
             cicloSeleccionadoId = id;
+
+            // --- 1. RESETEAR TODA LA SELECCIÓN AL CAMBIAR DE CICLO ---
+            planSeleccionadoId = Guid.Empty;
+            becaSeleccionadaId = null;
+            serviciosSeleccionadosIds.Clear();
+            conceptosUnicosSeleccionados.Clear();
+
+            // Reiniciamos la fecha a la de inicio del nuevo ciclo
+            var cicloActual = ciclos?.FirstOrDefault(c => c.Id == id);
+            fechaInicioCobro = cicloActual != null ? cicloActual.FechaInicio : DateTime.Today;
+
+            // --- 2. RECARGAR DATOS DEL NUEVO CICLO ---
             planes = await Http.GetFromJsonAsync<List<PlanPago>>($"api/Finanzas/planes/{id}");
             becas = await Http.GetFromJsonAsync<List<Beca>>($"api/Becas/ciclo/{id}");
 
@@ -347,30 +380,35 @@
             if (todos != null)
             {
                 serviciosAdicionales = todos.Where(c => c.Frecuencia == FrecuenciaPago.Mensual && !c.Obligatorio).ToList();
-
                 var unicosRaw = todos.Where(c => c.Frecuencia == FrecuenciaPago.PagoUnico).ToList();
 
                 conceptosUnicosDisponibles = new List<ConceptoPago>();
-                conceptosUnicosSeleccionados.Clear();
 
-                // --- AQUÍ VA LA LÓGICA QUE PREGUNTASTE ---
                 foreach (var c in unicosRaw)
                 {
-                    // Si el concepto NO tiene grado especifico (es null) -> ACEPTAR (Es para todos)
-                    // O
-                    // Si el concepto TIENE grado Y coincide con el del alumno -> ACEPTAR
                     if (c.GradoId == null || c.GradoId == 0 || c.GradoId == gradoAlumnoId)
                     {
                         conceptosUnicosDisponibles.Add(c);
-
-                        // Si es obligatorio, pre-seleccionar
                         if (c.Obligatorio) conceptosUnicosSeleccionados.Add(c.Id);
                     }
                 }
-                // -----------------------------------------
             }
 
             if (alumnoSeleccionado != null) await CargarCargosExistentes();
+        }
+        else
+        {
+            // Si el usuario selecciona la opción "-- Selecciona --" (Valor 0), limpiamos todo
+            cicloSeleccionadoId = 0;
+            planSeleccionadoId = Guid.Empty;
+            becaSeleccionadaId = null;
+            serviciosSeleccionadosIds.Clear();
+            conceptosUnicosSeleccionados.Clear();
+            planes = null;
+            becas = null;
+            serviciosAdicionales = null;
+            conceptosUnicosDisponibles = null;
+            fechaInicioCobro = DateTime.Today;
         }
     }
 
@@ -391,24 +429,47 @@
     async Task CargarCargosExistentes()
     {
         cargosExistentes = await Http.GetFromJsonAsync<List<CuentaPorCobrar>>($"api/Cuentas/alumno/{alumnoSeleccionado!.Id}/ciclo/{cicloSeleccionadoId}");
+
+        // LIMPIEZA INTELIGENTE DE INTERFAZ:
+        // Si ya tiene cargos, quitamos los "Cargos Únicos" de la pantalla para que no los vuelva a generar
+        if (conceptosUnicosDisponibles != null && cargosExistentes != null)
+        {
+            var idsYaCobrados = cargosExistentes.Select(c => c.ConceptoPagoId).ToList();
+
+            // Removemos de la lista visual los que ya le cobramos
+            conceptosUnicosDisponibles.RemoveAll(c => idsYaCobrados.Contains(c.Id));
+
+            // Limpiamos las selecciones por si acaso quedaron guardadas
+            conceptosUnicosSeleccionados.RemoveAll(id => idsYaCobrados.Contains(id));
+        }
     }
 
     // --- GENERACIÓN ---
     async Task GenerarCargos()
     {
-        if (planSeleccionadoId == Guid.Empty) { await JS.InvokeVoidAsync("alert", "Selecciona un Plan de Colegiatura."); return; }
+        // CAMBIO: Ahora permitimos avanzar si no hay plan, SIEMPRE Y CUANDO haya cargos únicos
+        if (planSeleccionadoId == Guid.Empty && !conceptosUnicosSeleccionados.Any())
+        {
+            await JS.InvokeVoidAsync("alert", "Selecciona un Plan de Colegiatura o al menos un Cargo Único (Libros/Uniformes).");
+            return;
+        }
 
-        // --- NUEVA VALIDACIÓN INTELIGENTE ---
-        // Revisamos si el alumno tiene cargos en este ciclo que NO sean inscripciones
+        // Si intenta meter transporte sin plan, lo bloqueamos en el frontend también
+        if (planSeleccionadoId == Guid.Empty && serviciosSeleccionadosIds.Any())
+        {
+            await JS.InvokeVoidAsync("alert", "No puedes agregar servicios mensuales si no seleccionas un plan de colegiaturas.");
+            return;
+        }
+
+        // Revisamos si el alumno tiene colegiaturas para lanzar la alerta (Igual que antes)
         bool tieneColegiaturasOCargos = cargosExistentes != null &&
              cargosExistentes.Any(c => !c.ConceptoNombre.ToLower().Contains("inscripci"));
 
-        if (tieneColegiaturasOCargos)
+        if (tieneColegiaturasOCargos && planSeleccionadoId != Guid.Empty)
         {
-            if (!await JS.InvokeAsync<bool>("confirm", "⚠️ ESTE ALUMNO YA TIENE COLEGIATURAS O SERVICIOS GENERADOS.\n\nGenerar de nuevo podría duplicar deudas si no cancelaste las anteriores. ¿Seguro que deseas continuar?"))
+            if (!await JS.InvokeAsync<bool>("confirm", "⚠️ ESTE ALUMNO YA TIENE COLEGIATURAS GENERADAS.\n\nGenerar un nuevo plan podría duplicar la deuda. ¿Seguro que deseas continuar?"))
                 return;
         }
-        // ------------------------------------
 
         generando = true;
 
@@ -438,6 +499,40 @@
             await JS.InvokeVoidAsync("alert", "❌ Error: " + msg);
         }
         generando = false;
+    }
+
+    void CambiarPlan(ChangeEventArgs e)
+    {
+        if (Guid.TryParse(e.Value?.ToString(), out Guid id))
+        {
+            planSeleccionadoId = id;
+            var plan = planes?.FirstOrDefault(p => p.Id == id);
+
+            if (plan != null)
+            {
+                // Buscamos el ciclo para saber en qué año estamos parados
+                var ciclo = ciclos?.FirstOrDefault(c => c.Id == cicloSeleccionadoId);
+                int anio = ciclo != null ? ciclo.FechaInicio.Year : DateTime.Today.Year;
+
+                // Si el plan empieza en un mes menor al mes de inicio del ciclo
+                // (Ej: El ciclo inicia en Agosto (8), y el plan empieza en Enero (1))
+                // Significa que ese Enero ya pertenece al año siguiente.
+                if (ciclo != null && plan.MesInicioCobro < ciclo.FechaInicio.Month)
+                {
+                    anio++;
+                }
+
+                // Usamos el día 1, o el día límite si es seguro (menor o igual a 28 para evitar que truene con Febrero)
+                int dia = (plan.DiaLimitePago > 0 && plan.DiaLimitePago <= 28) ? plan.DiaLimitePago : 1;
+
+                // ¡Pum! Seteamos la fecha automáticamente en pantalla
+                fechaInicioCobro = new DateTime(anio, plan.MesInicioCobro, dia);
+            }
+        }
+        else
+        {
+            planSeleccionadoId = Guid.Empty;
+        }
     }
 
     public class HistorialAcademicoDto

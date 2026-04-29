@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="css/app.css" />
     <link rel="icon" type="image/png" href="favicon.png" />
     <link href="Gremelik.Web.styles.css" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 </head>
 
 <body>
@@ -37,6 +38,40 @@
             link.click();
             document.body.removeChild(link);
         }
+    </script>
+
+    <script>
+        window.descargarPdfBase64 = function (filename, base64) {
+            var link = document.createElement('a');
+            link.download = filename;
+            // Nota que aquí dice application/pdf
+            link.href = 'data:application/pdf;base64,' + base64;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    </script>
+
+    <script>
+        window.abrirPdfBase64NuevaPestana = function (base64) {
+            // Decodificamos el Base64 a bytes puros
+            const byteCharacters = atob(base64);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+
+            // Creamos un archivo virtual (Blob) en memoria
+            const blob = new Blob([byteArray], { type: 'application/pdf' });
+            const blobUrl = URL.createObjectURL(blob);
+
+            // Abrimos el archivo en una nueva pestaña
+            const newWindow = window.open(blobUrl, '_blank');
+            if (!newWindow) {
+                alert("Tu navegador bloqueó la pestaña emergente. Por favor, permite las ventanas emergentes para este sitio.");
+            }
+        };
     </script>
 </body>
 

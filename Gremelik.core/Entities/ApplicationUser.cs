@@ -12,5 +12,7 @@ namespace Gremelik.core.Entities
         // Si es NULL = Es un Super Admin (Dueño de Gremelik).
         // Si tiene ID = Es un usuario de esa escuela específica.
         public Guid? EscuelaId { get; set; }
+
+        public bool Activo { get; set; } = true;
     }
 }

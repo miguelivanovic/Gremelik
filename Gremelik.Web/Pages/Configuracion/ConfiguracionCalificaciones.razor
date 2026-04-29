@@ -1,0 +1,383 @@
+﻿@page "/configuracion/calificaciones"
+@using Gremelik.core.Entities
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin, Coordinador")]
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<div class="container-fluid pb-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3><i class="bi bi-gear-wide-connected text-primary"></i> Configuración de Calificaciones</h3>
+    </div>
+
+    <div class="card shadow-sm border-0 bg-light mb-4">
+        <div class="card-body">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-4">
+                    <label class="fw-bold text-muted small">Plantel:</label>
+                    <select class="form-select border-primary" value="@plantelId" @onchange="CambiarPlantel">
+                        <option value="">-- Seleccionar Plantel --</option>
+                        @if (planteles != null)
+                        {
+                            @foreach (var p in planteles)
+                            {
+                                <option value="@p.Id">@p.Nombre</option>
+                            }
+                        }
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="fw-bold text-muted small">Nivel Educativo:</label>
+                    <select class="form-select border-primary fw-bold" value="@nivelId" @onchange="CambiarNivel" disabled="@(niveles == null)">
+                        <option value="">-- Seleccionar Nivel --</option>
+                        @if (niveles != null)
+                        {
+                            @foreach (var n in niveles)
+                            {
+                                <option value="@n.Id">@n.Nombre</option>
+                            }
+                        }
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (cargando)
+    {
+        <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+    }
+    else if (nivelId != Guid.Empty)
+    {
+        <div class="row g-4">
+            <div class="col-md-5">
+                <div class="card shadow-sm h-100">
+                    <div class="card-header bg-dark text-white fw-bold">
+                        <i class="bi bi-sliders me-2"></i> Reglas del Nivel
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="fw-bold small text-muted">¿Cómo se evalúa internamente?</label>
+                            <select class="form-select" @bind="configuracion.TipoPeriodoInterno">
+                                <option value="1">Mensual</option>
+                                <option value="2">Bimestral</option>
+                            </select>
+                            <small class="text-muted d-block mt-1">Independientemente de esto, el reporte SEP siempre será Trimestral.</small>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="fw-bold small text-muted">Formato de Calificación</label>
+                            <div class="form-check form-switch mt-2">
+                                <input class="form-check-input" type="checkbox" id="switchDecimales" @bind="configuracion.UsaDecimales">
+                                <label class="form-check-label fw-bold" for="switchDecimales">
+                                    @(configuracion.UsaDecimales ? "Acepta Decimales (Ej. 8.5)" : "Solo Enteros Cerrados (Ej. 9)")
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="row g-2 mb-4">
+                            <div class="col-4">
+                                <label class="fw-bold small text-muted">Mínimo Permitido</label>
+                                <input type="number" step="0.1" class="form-control" @bind="configuracion.EscalaMinima" />
+                            </div>
+                            <div class="col-4">
+                                <label class="fw-bold small text-muted">Máximo Permitido</label>
+                                <input type="number" step="0.1" class="form-control" @bind="configuracion.EscalaMaxima" />
+                            </div>
+                            <div class="col-4">
+                                <label class="fw-bold small text-muted">Aprobatoria</label>
+                                <input type="number" step="0.1" class="form-control border-success" @bind="configuracion.CalificacionAprobatoria" />
+                            </div>
+                        </div>
+
+                        <button class="btn btn-primary fw-bold w-100 shadow-sm" @onclick="GuardarReglas" disabled="@guardandoReglas">
+                            @if (guardandoReglas)
+                            {
+                                <span class="spinner-border spinner-border-sm me-2"></span>
+                            }
+                            <i class="bi bi-save"></i> Guardar Reglas
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-7">
+                <div class="card shadow-sm h-100">
+                    <div class="card-header bg-primary text-white fw-bold d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-calendar-range me-2"></i> Periodos de Evaluación (@cicloActualNombre)</span>
+                        <button class="btn btn-sm btn-light fw-bold text-primary" @onclick="AbrirModalPeriodo">
+                            <i class="bi bi-plus-lg"></i> Agregar
+                        </button>
+                    </div>
+                    <div class="card-body p-0">
+                        @if (listaPeriodos == null || !listaPeriodos.Any())
+                        {
+                            <div class="p-4 text-center text-muted">
+                                <i class="bi bi-info-circle fs-3 d-block mb-2"></i>
+                                No se han configurado los meses o bimestres para este ciclo.
+                            </div>
+                        }
+                        else
+                        {
+                            <table class="table table-hover align-middle mb-0 text-center">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Orden</th>
+                                        <th class="text-start">Nombre del Periodo</th>
+                                        <th>Pertenece al Trimestre SEP</th>
+                                        <th>Estado Captura</th>
+                                        <th>Quitar</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var p in listaPeriodos)
+                                    {
+                                        <tr>
+                                            <td class="fw-bold text-muted">@p.Orden</td>
+                                            <td class="text-start fw-bold">@p.Nombre</td>
+                                            <td><span class="badge bg-info text-dark">Trimestre @p.TrimestreSEP</span></td>
+
+                                            <td>
+                                                <div class="form-check form-switch d-flex justify-content-center mb-1">
+                                                    <input class="form-check-input" type="checkbox"
+                                                           checked="@p.AbiertoParaCaptura"
+                                                           @onchange="@((ChangeEventArgs e) => ToggleCaptura(p, Convert.ToBoolean(e.Value)))"
+                                                           style="cursor: pointer; transform: scale(1.3);">
+                                                </div>
+                                                <small class="@(p.AbiertoParaCaptura ? "text-success fw-bold" : "text-muted")">
+                                                    @(p.AbiertoParaCaptura ? "ABIERTO" : "Cerrado")
+                                                </small>
+                                            </td>
+
+                                            <td>
+                                                <button class="btn btn-sm btn-outline-danger" @onclick="() => EliminarPeriodo(p.Id, p.Nombre)">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@if (mostrarModal)
+{
+    <div class="modal fade show d-block" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title fw-bold">Nuevo Periodo de Evaluación</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="() => mostrarModal = false"></button>
+                </div>
+                <div class="modal-body bg-light">
+                    <div class="mb-3">
+                        <label class="fw-bold small text-muted">Nombre (Ej. Septiembre, Bimestre 1) *</label>
+                        <input type="text" class="form-control" @bind="nuevoPeriodo.Nombre" />
+                    </div>
+
+                    <div class="row g-3 mb-4">
+                        <div class="col-6">
+                            <label class="fw-bold small text-muted">Orden de aparición *</label>
+                            <input type="number" class="form-control" @bind="nuevoPeriodo.Orden" />
+                        </div>
+                        <div class="col-6">
+                            <label class="fw-bold small text-muted">Trimestre SEP *</label>
+                            <select class="form-select border-primary" @bind="nuevoPeriodo.TrimestreSEP">
+                                <option value="1">Trimestre 1</option>
+                                <option value="2">Trimestre 2</option>
+                                <option value="3">Trimestre 3</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-end gap-2">
+                        <button type="button" class="btn btn-secondary fw-bold" @onclick="() => mostrarModal = false">Cancelar</button>
+                        <button type="button" class="btn btn-primary fw-bold" @onclick="GuardarPeriodo" disabled="@guardandoPeriodo">
+                            @if (guardandoPeriodo)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            } Guardar Periodo
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    public class ConfiguracionRespuesta
+    {
+        public ConfiguracionDto? Configuracion { get; set; }
+        public List<PeriodoVista>? Periodos { get; set; }
+    }
+
+    public class PeriodoVista { public Guid Id { get; set; } public string Nombre { get; set; } = ""; public int TrimestreSEP { get; set; } public int Orden { get; set; } public bool AbiertoParaCaptura { get; set; } }
+
+    // DTO para manejar la configuración sin problemas de inicialización
+    public class ConfiguracionDto { public Guid NivelEducativoId { get; set; } public int TipoPeriodoInterno { get; set; } = 1; public bool UsaDecimales { get; set; } = true; public decimal CalificacionAprobatoria { get; set; } = 6.0m; public decimal EscalaMinima { get; set; } = 5.0m; public decimal EscalaMaxima { get; set; } = 10.0m; }
+
+    List<Plantel>? planteles;
+    List<NivelEducativo>? niveles;
+    Guid plantelId = Guid.Empty;
+    Guid nivelId = Guid.Empty;
+    int cicloActualId = 0;
+    string cicloActualNombre = "";
+
+    ConfiguracionDto configuracion = new();
+    List<PeriodoVista>? listaPeriodos;
+
+    bool cargando = false;
+    bool guardandoReglas = false;
+
+    // Modal
+    bool mostrarModal = false;
+    bool guardandoPeriodo = false;
+    PeriodoInterno nuevoPeriodo = new() { Nombre = "", Usuario = "" };
+
+    protected override async Task OnInitializedAsync()
+    {
+        planteles = await Http.GetFromJsonAsync<List<Plantel>>("api/Planteles");
+        var ciclos = await Http.GetFromJsonAsync<List<CicloEscolar>>("api/Ciclos");
+        var activo = ciclos?.FirstOrDefault(c => c.Estatus == EstatusCiclo.Actual);
+
+        if (activo != null)
+        {
+            cicloActualId = activo.Id;
+            cicloActualNombre = activo.Nombre;
+        }
+
+        if (planteles != null && planteles.Count == 1)
+        {
+            plantelId = planteles.First().Id;
+            niveles = await Http.GetFromJsonAsync<List<NivelEducativo>>($"api/Niveles/plantel/{plantelId}");
+        }
+    }
+
+    async Task CambiarPlantel(ChangeEventArgs e)
+    {
+        if (Guid.TryParse(e.Value?.ToString(), out Guid id))
+        {
+            plantelId = id;
+            niveles = await Http.GetFromJsonAsync<List<NivelEducativo>>($"api/Niveles/plantel/{id}");
+        }
+        nivelId = Guid.Empty;
+    }
+
+    async Task CambiarNivel(ChangeEventArgs e)
+    {
+        if (Guid.TryParse(e.Value?.ToString(), out Guid id))
+        {
+            nivelId = id;
+            await CargarDatosNivel();
+        }
+        else { nivelId = Guid.Empty; }
+    }
+
+    private async Task CargarDatosNivel()
+    {
+        cargando = true;
+        try
+        {
+            var res = await Http.GetFromJsonAsync<ConfiguracionRespuesta>($"api/ConfiguracionAcademica/nivel/{nivelId}/ciclo/{cicloActualId}");
+
+            if (res != null)
+            {
+                if (res.Configuracion != null)
+                {
+                    configuracion = res.Configuracion;
+                }
+                else
+                {
+                    // Valores por defecto si la escuela aún no configura nada
+                    configuracion = new ConfiguracionDto
+                        {
+                            NivelEducativoId = nivelId,
+                            TipoPeriodoInterno = 1,
+                            UsaDecimales = true,
+                            CalificacionAprobatoria = 6.0m, // Nombre nuevo
+                            EscalaMinima = 5.0m,            // Nuevo
+                            EscalaMaxima = 10.0m            // Nuevo
+                        };
+                }
+
+                listaPeriodos = res.Periodos ?? new List<PeriodoVista>();
+            }
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("console.error", "Error al cargar configuración: " + ex.Message);
+        }
+        cargando = false;
+    }
+
+    private async Task GuardarReglas()
+    {
+        guardandoReglas = true;
+        configuracion.NivelEducativoId = nivelId;
+        var res = await Http.PostAsJsonAsync("api/ConfiguracionAcademica/guardar-reglas", configuracion);
+        guardandoReglas = false;
+
+        if (res.IsSuccessStatusCode) await JS.InvokeVoidAsync("alert", "Reglas actualizadas correctamente.");
+        else await JS.InvokeVoidAsync("alert", "Error al guardar la configuración.");
+    }
+
+    private void AbrirModalPeriodo()
+    {
+        // Sugerir el siguiente número de orden
+        int sigOrden = (listaPeriodos?.Count ?? 0) + 1;
+        nuevoPeriodo = new PeriodoInterno { Nombre = "", Orden = sigOrden, TrimestreSEP = 1, NivelEducativoId = nivelId, CicloEscolarId = cicloActualId, Usuario = "" };
+        mostrarModal = true;
+    }
+
+    private async Task GuardarPeriodo()
+    {
+        if (string.IsNullOrWhiteSpace(nuevoPeriodo.Nombre)) { await JS.InvokeVoidAsync("alert", "El nombre es obligatorio."); return; }
+
+        guardandoPeriodo = true;
+        var res = await Http.PostAsJsonAsync("api/ConfiguracionAcademica/periodo", nuevoPeriodo);
+        guardandoPeriodo = false;
+
+        if (res.IsSuccessStatusCode)
+        {
+            mostrarModal = false;
+            await CargarDatosNivel(); // Recargar la tabla
+        }
+        else await JS.InvokeVoidAsync("alert", "Error al guardar el periodo.");
+    }
+
+    private async Task EliminarPeriodo(Guid id, string nombre)
+    {
+        if (await JS.InvokeAsync<bool>("confirm", $"¿Seguro que deseas eliminar el periodo '{nombre}'?"))
+        {
+            var res = await Http.DeleteAsync($"api/ConfiguracionAcademica/periodo/{id}");
+            if (res.IsSuccessStatusCode) await CargarDatosNivel();
+            else
+            {
+                var msg = await res.Content.ReadAsStringAsync();
+                await JS.InvokeVoidAsync("alert", "No se puede eliminar: " + msg);
+            }
+        }
+    }
+
+    private async Task ToggleCaptura(PeriodoVista p, bool nuevoEstado)
+    {
+        // Cambiamos el estado visualmente para que sea instantáneo
+        p.AbiertoParaCaptura = nuevoEstado;
+
+        var res = await Http.PutAsJsonAsync($"api/ConfiguracionAcademica/periodo/{p.Id}/toggle-captura", nuevoEstado);
+
+        if (!res.IsSuccessStatusCode)
+        {
+            // Si el backend falla, regresamos el switch a como estaba
+            p.AbiertoParaCaptura = !nuevoEstado;
+            await JS.InvokeVoidAsync("alert", "Error al cambiar el estado de captura del periodo.");
+        }
+    }
+}

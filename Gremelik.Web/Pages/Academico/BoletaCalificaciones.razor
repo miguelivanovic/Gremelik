@@ -1,0 +1,452 @@
+﻿@page "/academico/boleta-calificaciones"
+@using Gremelik.core.Entities
+@using Microsoft.AspNetCore.Authorization
+<PageTitle>Boletas_Calificaciones</PageTitle>
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin, Coordinador, Maestro")]
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<style>
+    /* MAGIA PARA IMPRESIÓN (HORIZONTAL Y SALTO DE PÁGINA) */
+    @@media print {
+        @@page {
+            size: landscape;
+            margin: 0mm; /* ESTA ES LA MAGIA QUE MATA LA URL Y LA FECHA DEL NAVEGADOR */
+        }
+
+        .ocultar-impresion, .sidebar, .top-row, nav, header, footer {
+            display: none !important;
+        }
+
+        body, main, .page, .content {
+            margin: 0 !important;
+            padding: 0 !important;
+            background-color: white !important;
+        }
+
+        .table-light th {
+            background-color: #f8f9fa !important;
+            -webkit-print-color-adjust: exact;
+        }
+
+        .table-bordered {
+            border-color: #000 !important;
+        }
+
+        table {
+            font-size: 11px !important;
+        }
+        /* LA SOLUCIÓN AL ESPACIO: Le damos el margen interior a cada boleta individualmente */
+        .salto-pagina {
+            padding-top: 1.5cm !important; /* Espacio arriba en TODAS las hojas */
+            padding-bottom: 1.5cm !important; /* Espacio abajo en TODAS las hojas */
+            padding-left: 1cm !important;
+            padding-right: 1cm !important;
+            page-break-after: always;
+        }
+
+            .salto-pagina:last-child {
+                page-break-after: auto;
+            }
+    }
+</style>
+
+<div class="container-fluid pb-5">
+
+    <div class="ocultar-impresion">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h3><i class="bi bi-file-earmark-text text-primary"></i> Boletas de Calificaciones</h3>
+        </div>
+
+        <div class="card shadow-sm border-0 bg-light mb-4">
+            <div class="card-body">
+                <div class="row g-3 align-items-end mb-3">
+                    <div class="col-md-3">
+                        <label class="fw-bold text-muted small">Plantel:</label>
+                        <select class="form-select border-primary" value="@plantelId" @onchange="CambiarPlantel">
+                            <option value="">-- Seleccionar --</option>
+                            @if (planteles != null)
+                            {
+                                foreach (var p in planteles)
+                                {
+                                    <option value="@p.Id">@p.Nombre</option>
+                                }
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="fw-bold text-muted small">Nivel:</label>
+                        <select class="form-select border-primary" @onchange="CambiarNivel" disabled="@(niveles == null)">
+                            <option value="">-- Seleccionar --</option>
+                            @if (niveles != null)
+                            {
+                                foreach (var n in niveles)
+                                {
+                                    <option value="@n.Id">@n.Nombre</option>
+                                }
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="fw-bold text-muted small">Grado:</label>
+                        <select class="form-select border-primary" value="@gradoId" @onchange="CambiarGrado" disabled="@(grados == null)">
+                            <option value="0">-- Seleccionar --</option>
+                            @if (grados != null)
+                            {
+                                foreach (var g in grados)
+                                {
+                                    <option value="@g.Id">@g.Nombre</option>
+                                }
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="fw-bold text-muted small">Grupo:</label>
+                        <select class="form-select border-primary" value="@grupoId" @onchange="CambiarGrupo" disabled="@(grupos == null)">
+                            <option value="0">-- Seleccionar --</option>
+                            @if (grupos != null)
+                            {
+                                foreach (var g in grupos)
+                                {
+                                    <option value="@g.Id">@g.Nombre</option>
+                                }
+                            }
+                        </select>
+                    </div>
+                </div>
+
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-6">
+                        <label class="fw-bold text-muted small">Alumno (Para reporte individual):</label>
+                        <select class="form-select border-primary fw-bold" @bind="alumnoId" disabled="@(alumnos == null || !alumnos.Any())">
+                            <option value="">-- Seleccionar Alumno --</option>
+                            @if (alumnos != null)
+                            {
+                                foreach (var a in alumnos)
+                                {
+                                    <option value="@a.AlumnoId">@a.NombreCompleto</option>
+                                }
+                            }
+                        </select>
+                    </div>
+
+                    <div class="col-md-2">
+                        <button class="btn btn-primary fw-bold w-100 shadow-sm" @onclick="GenerarBoletaIndividual" disabled="@(alumnoId == Guid.Empty)">
+                            <i class="bi bi-person-check"></i> Individual
+                        </button>
+                    </div>
+                    <div class="col-md-2">
+                        <button class="btn btn-success fw-bold w-100 shadow-sm" @onclick="GenerarBoletasGrupo" disabled="@(grupoId == 0)">
+                            <i class="bi bi-people"></i> Todo el Grupo
+                        </button>
+                    </div>
+                    <div class="col-md-2">
+                        <button class="btn btn-outline-dark fw-bold w-100 shadow-sm" @onclick="Imprimir" disabled="@(boletasAImprimir == null || !boletasAImprimir.Any())">
+                            <i class="bi bi-printer"></i> Imprimir PDF
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (cargando)
+    {
+        <div class="text-center py-5 ocultar-impresion"><div class="spinner-border text-primary"></div></div>
+    }
+    else if (boletasAImprimir != null && boletasAImprimir.Any())
+    {
+        <div class="d-flex justify-content-center mb-4 ocultar-impresion">
+            <div class="btn-group shadow-sm" role="group">
+                <input type="radio" class="btn-check" name="btnradio" id="btnInterno" autocomplete="off" checked="@(tipoReporte == 1)" @onchange="() => tipoReporte = 1">
+                <label class="btn btn-outline-primary fw-bold px-4" for="btnInterno"><i class="bi bi-list-columns-reverse me-2"></i> Reporte Interno (Desglose)</label>
+
+                <input type="radio" class="btn-check" name="btnradio" id="btnSep" autocomplete="off" checked="@(tipoReporte == 2)" @onchange="() => tipoReporte = 2">
+                <label class="btn btn-outline-primary fw-bold px-4" for="btnSep"><i class="bi bi-file-earmark-check me-2"></i> Reporte Oficial (SEP)</label>
+            </div>
+        </div>
+
+        @foreach (var boleta in boletasAImprimir)
+        {
+            <div class="salto-pagina">
+                <div class="card shadow border-dark mb-4" style="border-width: 2px !important;">
+
+                    <div class="card-header bg-white border-dark p-4 d-flex justify-content-between align-items-center" style="border-bottom-width: 2px !important;">
+                        <div style="width: 120px;">
+                            @if (!string.IsNullOrEmpty(boleta.EscuelaLogo))
+                            {
+                                <img src="@boleta.EscuelaLogo" alt="Logo Escuela" class="img-fluid" style="max-height: 90px;" />
+                            }
+                        </div>
+
+                        <div class="text-center flex-grow-1 px-3">
+                            <h3 class="fw-bold text-uppercase mb-1" style="color: #0b2b5e;">@boleta.EscuelaNombre</h3>
+                            <h6 class="fw-bold text-muted mb-3">
+                                @(tipoReporte == 1 ? "REPORTE DE EVALUACIÓN INTERNA" : "REPORTE DE EVALUACIÓN OFICIAL")
+                            </h6>
+
+                            <div class="d-flex justify-content-center gap-4 text-dark small">
+                                <span><strong>Alumno:</strong> @boleta.NombreCompleto</span>
+                                <span><strong>Nivel:</strong> @boleta.NivelGradoGrupo</span>
+                                <span><strong>Ciclo:</strong> @boleta.CicloEscolar</span>
+                            </div>
+                        </div>
+
+                        <div style="width: 120px;" class="text-end small text-muted">
+                            Fecha de Emisión:<br /><strong>@DateTime.Now.ToString("dd/MM/yyyy")</strong>
+                        </div>
+                    </div>
+
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+
+                            @if (tipoReporte == 1)
+                            {
+                                <table class="table table-bordered align-middle text-center mb-0 border-dark">
+                                    <thead class="table-light border-dark">
+                                        <tr>
+                                            <th rowspan="2" class="align-middle" style="width: 130px; min-width: 130px;">Campo Formativo</th>
+
+                                            <th rowspan="2" class="text-start ps-3 align-middle" style="width: 150px; min-width: 150px;">Materia</th>
+                                            @for (int t = 1; t <= 3; t++)
+                                            {
+                                                var periodosTrimestre = boleta.Periodos.Where(p => p.TrimestreSEP == t).ToList();
+                                                if (periodosTrimestre.Any())
+                                                {
+                                                    <th colspan="@periodosTrimestre.Count" class="border-end border-dark">Trimestre @t</th>
+                                                }
+                                            }
+                                            <th rowspan="2" class="bg-light fw-bold" style="width: 80px;">Promedio<br />Final</th>
+                                            <th rowspan="2" style="width: 70px;">Inasis.</th>
+                                        </tr>
+                                        <tr>
+                                            @for (int t = 1; t <= 3; t++)
+                                            {
+                                                foreach (var p in boleta.Periodos.Where(per => per.TrimestreSEP == t))
+                                                {
+                                                    <th class="small text-muted text-center" style="width: 60px; min-width: 60px; max-width: 60px;">
+                                                        @p.Nombre.Substring(0, Math.Min(3, p.Nombre.Length)).ToUpper()
+                                                    </th>
+                                                }
+                                            }
+                                        </tr>
+                                    </thead>
+                                    <tbody class="border-dark">
+                                        @foreach (var agrupacion in boleta.Materias.GroupBy(m => string.IsNullOrEmpty(m.CampoFormativo) ? "Sin Especificar" : m.CampoFormativo))
+                                        {
+                                            bool esPrimeraFila = true;
+                                            @foreach (var m in agrupacion)
+                                            {
+                                                <tr>
+                                                    @if (esPrimeraFila)
+                                                    {
+                                                        <td rowspan="@agrupacion.Count()" class="align-middle fw-bold bg-light small px-2 border-end border-dark text-wrap" style="width: 130px; line-height: 1.2;">
+                                                            @agrupacion.Key
+                                                        </td>
+                                                        esPrimeraFila = false;
+                                                    }
+                                                    <td class="text-start ps-2 fw-bold text-dark align-middle" style="width: 150px; max-width: 150px; padding-top: 2px; padding-bottom: 2px;">
+                                                        <div style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: normal; line-height: 1.1; margin: 0;">
+                                                            @m.Materia
+                                                        </div>
+                                                    </td>
+
+                                                    @for (int t = 1; t <= 3; t++)
+                                                    {
+                                                        foreach (var p in boleta.Periodos.Where(per => per.TrimestreSEP == t))
+                                                        {
+                                                            var notaInterna = m.NotasInternas.FirstOrDefault(n => n.PeriodoId == p.Id);
+                                                            <td class="text-center" style="width: 60px; min-width: 60px; max-width: 60px;">
+                                                                @(notaInterna != null ? notaInterna.Nota.ToString("0.0") : "-")
+                                                            </td>
+                                                        }
+                                                    }
+                                                    <td class="bg-light fw-bold text-dark">@(m.PromedioFinal?.ToString("0.0") ?? "-")</td>
+                                                    <td class="@(m.FaltasTotales > 0 ? "text-danger fw-bold" : "")">@(m.FaltasTotales > 0 ? m.FaltasTotales.ToString() : "-")</td>
+                                                </tr>
+                                            }
+                                        }
+                                    </tbody>
+                                    <tfoot class="table-light border-dark fw-bold text-dark">
+                                        <tr>
+                                            <td colspan="@(2 + boleta.Periodos.Count)" class="text-end pe-3">PROMEDIO GENERAL DEL ALUMNO:</td>
+                                            <td class="text-primary fs-5">@boleta.PromedioGeneral.ToString("0.0")</td>
+                                            <td class="text-danger">@boleta.FaltasTotales</td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            }
+                            else
+                            {
+                                <table class="table table-bordered align-middle text-center mb-0 border-dark">
+                                    <thead class="table-light border-dark">
+                                        <tr>
+                                            <th class="align-middle" style="width: 20%;">Campo Formativo</th>
+                                            <th class="text-start ps-4 align-middle" style="width: 20%;">Materia</th>
+
+                                            <th style="width: 10%;">Trimestre 1</th>
+                                            <th style="width: 10%;">Trimestre 2</th>
+                                            <th style="width: 10%;">Trimestre 3</th>
+                                            <th class="bg-light fw-bold" style="width: 15%;">Promedio Final</th>
+                                            <th style="width: 15%;">Inasistencias</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="border-dark">
+                                        @foreach (var agrupacion in boleta.Materias.GroupBy(m => string.IsNullOrEmpty(m.CampoFormativo) ? "Sin Especificar" : m.CampoFormativo))
+                                        {
+                                            bool esPrimeraFila = true;
+                                            @foreach (var m in agrupacion)
+                                            {
+                                                <tr>
+                                                    @if (esPrimeraFila)
+                                                    {
+                                                        <td rowspan="@agrupacion.Count()" class="align-middle fw-bold bg-light small px-2 border-end border-dark text-wrap" style="line-height: 1.2;">
+                                                            @agrupacion.Key
+                                                        </td>
+                                                        esPrimeraFila = false;
+                                                    }
+                                                    <td class="text-start ps-4 fw-bold text-dark align-middle" style="padding-top: 2px; padding-bottom: 2px;">
+                                                        <div style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: normal; line-height: 1.1; margin: 0;">
+                                                            @m.Materia
+                                                        </div>
+                                                    </td>
+                                                    <td>@(m.Trimestre1?.ToString("0.0") ?? "-")</td>
+                                                    <td>@(m.Trimestre2?.ToString("0.0") ?? "-")</td>
+                                                    <td>@(m.Trimestre3?.ToString("0.0") ?? "-")</td>
+                                                    <td class="bg-light fw-bold text-dark fs-5">@(m.PromedioFinal?.ToString("0.0") ?? "-")</td>
+                                                    <td class="@(m.FaltasTotales > 0 ? "text-danger fw-bold" : "")">@(m.FaltasTotales > 0 ? m.FaltasTotales.ToString() : "-")</td>
+                                                </tr>
+                                            }
+                                        }
+                                    </tbody>
+                                    <tfoot class="table-light border-dark fw-bold text-dark fs-5">
+                                        <tr>
+                                            <td colspan="5" class="text-end pe-3">PROMEDIO GENERAL DEL ALUMNO:</td>
+                                            <td class="text-primary">@boleta.PromedioGeneral.ToString("0.0")</td>
+                                            <td class="fs-6 text-danger">@boleta.FaltasTotales Totales</td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            }
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    public class AlumnoFiltro { public Guid AlumnoId { get; set; } public string NombreCompleto { get; set; } = ""; }
+
+    public class BoletaAlumnoDto
+    {
+        public string EscuelaNombre { get; set; } = "";
+        public string EscuelaLogo { get; set; } = "";
+        public Guid AlumnoId { get; set; }
+        public string NombreCompleto { get; set; } = "";
+        public string NivelGradoGrupo { get; set; } = "";
+        public string CicloEscolar { get; set; } = "";
+        public decimal PromedioGeneral { get; set; }
+        public int FaltasTotales { get; set; }
+        public List<PeriodoBoletaDto> Periodos { get; set; } = new();
+        public List<BoletaMateriaDto> Materias { get; set; } = new();
+    }
+
+    public class PeriodoBoletaDto { public Guid Id { get; set; } public string Nombre { get; set; } = ""; public int TrimestreSEP { get; set; } }
+    public class NotaInternaBoletaDto { public Guid PeriodoId { get; set; } public decimal Nota { get; set; } }
+
+    public class BoletaMateriaDto
+    {
+        public string Materia { get; set; } = "";
+        // --- NUEVO CAMPO NECESARIO PARA AGRUPAR ---
+        public string CampoFormativo { get; set; } = "Sin Especificar";
+
+        public List<NotaInternaBoletaDto> NotasInternas { get; set; } = new();
+        public decimal? Trimestre1 { get; set; }
+        public decimal? Trimestre2 { get; set; }
+        public decimal? Trimestre3 { get; set; }
+        public decimal? PromedioFinal { get; set; }
+        public int FaltasTotales { get; set; }
+    }
+
+    // --- VARIABLES ---
+    List<Plantel>? planteles; List<NivelEducativo>? niveles; List<Grado>? grados; List<Grupo>? grupos;
+    List<AlumnoFiltro>? alumnos;
+
+    Guid plantelId = Guid.Empty; Guid nivelId = Guid.Empty; int gradoId = 0; int grupoId = 0; Guid alumnoId = Guid.Empty;
+    int cicloActualId = 0;
+
+    List<BoletaAlumnoDto>? boletasAImprimir;
+    bool cargando = false;
+    int tipoReporte = 1; // 1 = Interno, 2 = SEP
+
+    // --- INICIALIZACIÓN ---
+    protected override async Task OnInitializedAsync()
+    {
+        planteles = await Http.GetFromJsonAsync<List<Plantel>>("api/Planteles");
+        var ciclos = await Http.GetFromJsonAsync<List<CicloEscolar>>("api/Ciclos");
+        var activo = ciclos?.FirstOrDefault(c => c.Estatus == EstatusCiclo.Actual);
+        if (activo != null) cicloActualId = activo.Id;
+
+        if (planteles != null && planteles.Count == 1)
+        {
+            plantelId = planteles.First().Id;
+            niveles = await Http.GetFromJsonAsync<List<NivelEducativo>>($"api/Niveles/plantel/{plantelId}");
+        }
+    }
+
+    // --- CASCADAS ---
+    async Task CambiarPlantel(ChangeEventArgs e) { if (Guid.TryParse(e.Value?.ToString(), out Guid id)) { plantelId = id; niveles = await Http.GetFromJsonAsync<List<NivelEducativo>>($"api/Niveles/plantel/{id}"); } grados = null; grupos = null; alumnos = null; grupoId = 0; alumnoId = Guid.Empty; boletasAImprimir = null; }
+    async Task CambiarNivel(ChangeEventArgs e) { if (Guid.TryParse(e.Value?.ToString(), out Guid id)) { nivelId = id; grados = await Http.GetFromJsonAsync<List<Grado>>($"api/Grados/nivel/{id}"); } grupos = null; alumnos = null; grupoId = 0; alumnoId = Guid.Empty; boletasAImprimir = null; }
+    async Task CambiarGrado(ChangeEventArgs e) { if (int.TryParse(e.Value?.ToString(), out int id) && id != 0) { gradoId = id; grupos = await Http.GetFromJsonAsync<List<Grupo>>($"api/Grupos/grado/{id}/ciclo/{cicloActualId}"); } else { grupos = null; alumnos = null; grupoId = 0; alumnoId = Guid.Empty; boletasAImprimir = null; } }
+
+    async Task CambiarGrupo(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int id) && id != 0)
+        {
+            grupoId = id;
+            alumnoId = Guid.Empty;
+            boletasAImprimir = null;
+            alumnos = await Http.GetFromJsonAsync<List<AlumnoFiltro>>($"api/Asistencias/alumnos-filtro?grupoId={grupoId}");
+        }
+        else { grupoId = 0; alumnos = null; alumnoId = Guid.Empty; boletasAImprimir = null; }
+    }
+
+    // --- GENERAR REPORTES ---
+    private async Task GenerarBoletaIndividual()
+    {
+        cargando = true; boletasAImprimir = null;
+        try
+        {
+            var res = await Http.GetFromJsonAsync<BoletaAlumnoDto>($"api/ReportesAcademicos/boleta/alumno/{alumnoId}/grupo/{grupoId}/ciclo/{cicloActualId}");
+            if (res != null) boletasAImprimir = new List<BoletaAlumnoDto> { res };
+        }
+        catch (Exception)
+        {
+            await JS.InvokeVoidAsync("alert", "Error al generar la boleta individual.");
+        }
+        cargando = false;
+    }
+
+    private async Task GenerarBoletasGrupo()
+    {
+        cargando = true; boletasAImprimir = null;
+        try
+        {
+            boletasAImprimir = await Http.GetFromJsonAsync<List<BoletaAlumnoDto>>($"api/ReportesAcademicos/boletas/grupo/{grupoId}/ciclo/{cicloActualId}");
+        }
+        catch (Exception)
+        {
+            await JS.InvokeVoidAsync("alert", "Error al cargar las boletas del grupo.");
+        }
+        cargando = false;
+    }
+
+    // --- IMPRESIÓN ---
+    private async Task Imprimir()
+    {
+        await JS.InvokeVoidAsync("window.print");
+    }
+}

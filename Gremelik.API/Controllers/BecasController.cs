@@ -22,14 +22,40 @@ namespace Gremelik.API.Controllers
             _tenantService = tenantService;
         }
 
-        // CAMBIO: Filtramos por Ciclo
+        // GET: api/Becas/ciclo/{cicloId}
         [HttpGet("ciclo/{cicloId}")]
         public async Task<ActionResult<IEnumerable<Beca>>> Get(int cicloId)
         {
             return await _context.Becas
-                .Where(b => b.CicloEscolarId == cicloId)
+                .Where(b => b.CicloEscolarId == cicloId && b.Activo) // Solo traemos las que no han sido "borradas"
                 .OrderBy(b => b.Nombre)
                 .ToListAsync();
+        }
+
+        // DELETE: api/Becas/5
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> Delete(Guid id)
+        {
+            var beca = await _context.Becas.FindAsync(id);
+            if (beca == null) return NotFound();
+
+            // SOFT DELETE: En lugar de Remove, desactivamos
+            beca.Activo = false;
+            beca.FUM = DateTime.Now; // Fecha de Última Modificación
+            beca.Usuario = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "Sistema";
+
+            _context.Entry(beca).State = EntityState.Modified;
+
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                return BadRequest($"Error al desactivar la beca: {ex.Message}");
+            }
+
+            return NoContent();
         }
 
         [HttpPost]
@@ -55,16 +81,6 @@ namespace Gremelik.API.Controllers
             _context.Entry(beca).State = EntityState.Modified;
             await _context.SaveChangesAsync();
             return NoContent();
-        }
-
-        [HttpDelete("{id}")]
-        public async Task<IActionResult> Delete(Guid id)
-        {
-            var beca = await _context.Becas.FindAsync(id);
-            if (beca == null) return NotFound();
-            _context.Becas.Remove(beca);
-            await _context.SaveChangesAsync();
-            return NoContent();
-        }
+        }        
     }
 }

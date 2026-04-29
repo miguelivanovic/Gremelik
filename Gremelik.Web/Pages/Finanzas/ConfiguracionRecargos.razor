@@ -1,0 +1,251 @@
+﻿@page "/configuracion/recargos"
+@using Gremelik.core.Entities
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin")]
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<div class="container-fluid pb-5">
+    <h3 class="mb-3">⏱️ Configuración de Recargos por Mora</h3>
+    <p class="text-muted">Define las penalizaciones automáticas para los pagos atrasados.</p>
+
+    <div class="card mb-4 border-danger shadow-sm">
+        <div class="card-body bg-light d-flex align-items-center gap-3 py-2">
+            <label class="fw-bold text-danger"><i class="bi bi-calendar-event"></i> Ciclo Escolar:</label>
+            <select class="form-select w-auto fw-bold" value="@cicloSeleccionadoId" @onchange="CambiarCiclo">
+                <option value="0">-- Selecciona --</option>
+                @if (ciclos != null)
+                {
+                    foreach (var c in ciclos)
+                    {
+                        <option value="@c.Id">@c.Nombre</option>
+                    }
+                }
+            </select>
+        </div>
+    </div>
+
+    @if (cicloSeleccionadoId != 0)
+    {
+        <div class="d-flex justify-content-end mb-3">
+            <button class="btn btn-danger shadow-sm" @onclick="AbrirModal">
+                <i class="bi bi-plus-lg"></i> Nuevo Recargo
+            </button>
+        </div>
+
+        @if (recargos == null)
+        {
+            <div class="text-center py-5"><div class="spinner-border text-danger"></div></div>
+        }
+        else if (!recargos.Any())
+        {
+            <div class="alert alert-info shadow-sm">No hay recargos configurados para este ciclo. Los alumnos que paguen tarde no tendrán penalización.</div>
+        }
+        else
+        {
+            <div class="row">
+                @foreach (var r in recargos)
+                {
+                    <div class="col-md-4 mb-4">
+                        <div class="card shadow-sm h-100 border-0 border-start border-4 border-danger">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <h5 class="card-title text-dark fw-bold mb-0">@r.NombreConcepto</h5>
+                                    <div class="d-flex gap-2">
+                                        <button class="btn btn-sm btn-outline-primary" title="Editar" @onclick="() => Editar(r)">
+                                            <i class="bi bi-pencil-fill"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-danger" title="Inactivar" @onclick="() => Inactivar(r.Id)">
+                                            <i class="bi bi-trash-fill"></i>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <h3 class="my-3 text-danger fw-bold">
+                                    @if (r.Porcentaje > 0)
+                                    {
+                                        <span>@r.Porcentaje.ToString("0")%</span>
+                                    }
+                                    else
+                                    {
+                                        <span>$@r.MontoFijo.ToString("N0")</span>
+                                    }
+                                </h3>
+
+                                <div class="bg-light p-2 rounded small border mt-2">
+                                    <i class="bi bi-clock-history"></i> Aplica <strong>@r.DiasGracia días</strong> después del vencimiento. <br />
+                                    <i class="bi bi-gear-wide-connected"></i> Modo: <strong>@(r.Tipo == TipoAplicacionRecargo.MensualAcumulativo ? "Acumulativo" : "Único")</strong> <br />
+                                    <i class="bi bi-receipt"></i> Fiscal:
+                                    <strong>
+                                        @(r.AplicaIva ? (r.IvaIncluido ? "Grava IVA (Ya incluido)" : "Grava IVA (+16% extra)") : "No grava IVA")
+                                    </strong>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    }
+</div>
+
+@if (mostrarModal)
+{
+    <div class="modal d-block" style="background: rgba(0,0,0,0.5)">
+        <div class="modal-dialog">
+            <div class="modal-content border-danger">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title">@(nuevoRecargo.Id == Guid.Empty ? "Nuevo" : "Editar") Recargo</h5>
+                    <button class="btn-close btn-close-white" @onclick="()=>mostrarModal=false"></button>
+                </div>
+                <div class="modal-body">
+                    <EditForm Model="@nuevoRecargo" OnSubmit="Guardar">
+                        <div class="mb-3">
+                            <label class="fw-bold">Nombre del Concepto</label>
+                            <InputText class="form-control" @bind-Value="nuevoRecargo.NombreConcepto" placeholder="Ej: Recargo Mensualidad Atrasada" required />
+                        </div>
+
+                        <div class="mb-3 p-3 bg-white rounded border border-primary">
+                            <label class="fw-bold text-primary d-block mb-2"><i class="bi bi-gear-wide-connected"></i> Tipo de Aplicación</label>
+                            <InputSelect class="form-select border-primary fw-bold" @bind-Value="nuevoRecargo.Tipo">
+                                <option value="@TipoAplicacionRecargo.UnicaVez">Cobro Único (Una sola vez)</option>
+                                <option value="@TipoAplicacionRecargo.MensualAcumulativo">Mensual Acumulativo (Suma por cada mes de atraso)</option>
+                            </InputSelect>
+                            <small class="text-muted mt-2 d-block">
+                                @(nuevoRecargo.Tipo == TipoAplicacionRecargo.MensualAcumulativo
+                                    ? "⚠️ Se cobrará el monto por cada mes que la deuda siga vencida."
+                                    : "✅ El cargo se aplicará una sola vez al pasar los días de gracia.")
+                            </small>
+                        </div>
+
+                        <div class="mb-3 p-3 bg-light rounded border">
+                            <label class="fw-bold text-dark d-block mb-2"><i class="bi bi-calendar-x"></i> Días de Gracia</label>
+                            <InputNumber class="form-control fw-bold" @bind-Value="nuevoRecargo.DiasGracia" />
+                            <small class="text-muted mt-1 d-block">Ej: Si vence el día 10 y pones 0, el día 11 ya se cobra. Si pones 5, se cobra hasta el día 16.</small>
+                        </div>
+
+                        <div class="row mb-3 bg-danger bg-opacity-10 p-2 rounded mx-0 border border-danger">
+                            <div class="col-6">
+                                <label class="fw-bold text-danger">Porcentaje (%)</label>
+                                <InputNumber class="form-control fw-bold" @bind-Value="nuevoRecargo.Porcentaje" />
+                            </div>
+                            <div class="col-6">
+                                <label class="fw-bold text-danger">Monto Fijo ($)</label>
+                                <InputNumber class="form-control fw-bold" @bind-Value="nuevoRecargo.MontoFijo" />
+                            </div>
+                            <small class="text-muted mt-2 text-center">Llena solo uno. Si ambos tienen valor, se prioriza el Porcentaje.</small>
+                        </div>
+
+                        <div class="mb-3 p-3 bg-light rounded border border-secondary">
+                            <label class="fw-bold text-dark d-block mb-2"><i class="bi bi-receipt"></i> Configuración Fiscal (IVA)</label>
+                            <div class="form-check form-switch mb-2">
+                                <InputCheckbox class="form-check-input" id="checkAplicaIva" @bind-Value="nuevoRecargo.AplicaIva" />
+                                <label class="form-check-label fw-bold" for="checkAplicaIva">Este recargo grava IVA</label>
+                            </div>
+
+                            @if (nuevoRecargo.AplicaIva)
+                            {
+                                <div class="form-check form-switch ms-3 mt-2 border-start border-primary ps-4">
+                                    <InputCheckbox class="form-check-input" id="checkIvaIncluido" @bind-Value="nuevoRecargo.IvaIncluido" />
+                                    <label class="form-check-label text-muted small" for="checkIvaIncluido">
+                                        @(nuevoRecargo.IvaIncluido ? "El monto configurado arriba ya incluye el IVA (16%)." : "El sistema sumará el 16% de IVA al momento de cobrar.")
+                                    </label>
+                                </div>
+                            }
+                        </div>
+
+                        <button type="submit" class="btn btn-danger w-100 mt-3 fw-bold">Guardar Recargo</button>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    List<CicloEscolar>? ciclos;
+    List<ConfiguracionRecargo>? recargos;
+    ConfiguracionRecargo nuevoRecargo = new() { Usuario = "" };
+
+    int cicloSeleccionadoId = 0;
+    bool mostrarModal = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var todos = await Http.GetFromJsonAsync<List<CicloEscolar>>("api/Ciclos");
+        if (todos != null) ciclos = todos.OrderByDescending(c => c.FechaInicio).ToList();
+    }
+
+    private async Task CambiarCiclo(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int id) && id != 0)
+        {
+            cicloSeleccionadoId = id;
+            await CargarRecargos();
+        }
+        else
+        {
+            cicloSeleccionadoId = 0;
+            recargos = null;
+        }
+    }
+
+    async Task CargarRecargos()
+    {
+        recargos = await Http.GetFromJsonAsync<List<ConfiguracionRecargo>>($"api/Recargos/ciclo/{cicloSeleccionadoId}");
+    }
+
+    void AbrirModal()
+    {
+        nuevoRecargo = new()
+            {
+                Usuario = "",
+                Porcentaje = 0,
+                MontoFijo = 0,
+                DiasGracia = 0,
+                NombreConcepto = "Recargo por Mora",
+                Tipo = TipoAplicacionRecargo.UnicaVez,
+                AplicaIva = false,          // Por defecto no lleva IVA
+                IvaIncluido = true,         // Por defecto, si le prenden el IVA, asumimos que ya viene incluido
+                Activo = true,
+                CicloEscolarId = cicloSeleccionadoId
+            };
+        mostrarModal = true;
+    }
+
+    void Editar(ConfiguracionRecargo r)
+    {
+        nuevoRecargo = new()
+            {
+                Id = r.Id,
+                NombreConcepto = r.NombreConcepto,
+                Porcentaje = r.Porcentaje,
+                MontoFijo = r.MontoFijo,
+                DiasGracia = r.DiasGracia,
+                Tipo = r.Tipo,
+                AplicaIva = r.AplicaIva,
+                IvaIncluido = r.IvaIncluido,
+                CicloEscolarId = r.CicloEscolarId,
+                EscuelaId = r.EscuelaId,
+                Usuario = r.Usuario
+            };
+        mostrarModal = true;
+    }
+
+    async Task Guardar()
+    {
+        HttpResponseMessage res;
+        if (nuevoRecargo.Id != Guid.Empty) res = await Http.PutAsJsonAsync($"api/Recargos/{nuevoRecargo.Id}", nuevoRecargo);
+        else res = await Http.PostAsJsonAsync("api/Recargos", nuevoRecargo);
+
+        if (res.IsSuccessStatusCode) { mostrarModal = false; await CargarRecargos(); }
+    }
+
+    async Task Inactivar(Guid id)
+    {
+        if (await JS.InvokeAsync<bool>("confirm", "¿Inactivar este recargo?"))
+        {
+            await Http.DeleteAsync($"api/Recargos/{id}");
+            await CargarRecargos();
+        }
+    }
+}

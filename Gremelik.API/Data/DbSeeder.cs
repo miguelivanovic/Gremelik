@@ -12,7 +12,16 @@ namespace Gremelik.API.Data
             var userManager = serviceProvider.GetRequiredService<UserManager<ApplicationUser>>();
 
             // 1. Crear Roles si no existen
-            string[] roleNames = { "GlobalAdmin", "SchoolAdmin", "User" };
+            // 1. Crear Roles si no existen
+            string[] roleNames = {
+                "GlobalAdmin",  // Tú
+                "SchoolAdmin",  // Director/Dueño de la escuela
+                "Cajero",       // Acceso a finanzas, cobros, corte de caja
+                "Maestro",      // Acceso a listas, calificaciones
+                "Coordinador",  // Acceso a configuración académica, grupos
+                "User",          // Rol base genérico
+                "Padre"
+            };
 
             foreach (var roleName in roleNames)
             {

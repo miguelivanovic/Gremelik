@@ -73,9 +73,13 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddScoped<CurrentTenantService>();
 builder.Services.AddTransient<TenantMiddleware>();
 
+builder.Services.AddScoped<Gremelik.API.Services.ProcesadorPagosService>();
+
+builder.Services.AddScoped<CalculadoraDeudasService>();
+
 var app = builder.Build();
 
-/*// --- INICIO: SEMBRADOR DE DATOS ---
+// --- INICIO: SEMBRADOR DE DATOS ---
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
@@ -89,7 +93,7 @@ using (var scope = app.Services.CreateScope())
         Console.WriteLine("Error al sembrar datos: " + ex.Message);
     }
 }
-// --- FIN: SEMBRADOR DE DATOS ---*/
+// --- FIN: SEMBRADOR DE DATOS ---
 
 // --- PIPELINE DE PETICIONES (El orden importa mucho aquí) ---
 

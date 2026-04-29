@@ -1,4 +1,5 @@
-﻿using Gremelik.core.Entities;
+﻿using Gremelik.core.DTOs;
+using Gremelik.core.Entities;
 using Gremelik.core.Services;
 using Gremelik.data.Contexts;
 using Microsoft.AspNetCore.Authorization;
@@ -162,6 +163,7 @@ namespace Gremelik.API.Controllers
                     Usuario = usuarioActual,
                     AlumnoId = dto.Alumno.Id,
                     GrupoId = (dto.GrupoId > 0) ? dto.GrupoId : null, // Guardamos null si es 0
+                    GradoId = dto.GradoId,
                     CicloEscolarId = dto.CicloId,
                     PlantelId = plantelId, // Usamos el ID recuperado
 
@@ -324,32 +326,75 @@ namespace Gremelik.API.Controllers
 
         // GET: api/Inscripciones/lista?cicloId=1&gradoId=5&grupoId=10
         [HttpGet("lista")]
-        public async Task<ActionResult<IEnumerable<Inscripcion>>> GetLista(int cicloId, int gradoId, int? grupoId = null)
+        public async Task<ActionResult<object>> GetLista(int cicloId, int gradoId, int? grupoId = null)
         {
+            if (!_tenantService.TenantId.HasValue) return BadRequest("Escuela no identificada.");
+            var tenantId = _tenantService.TenantId.Value;
+
+            // 1. Obtener datos de la escuela para el PDF
+            string nombreEscuela = "SISTEMA ESCOLAR";
+            string logoEscuela = "";
+            var escuela = await _context.Escuelas.FindAsync(tenantId);
+            if (escuela != null)
+            {
+                nombreEscuela = escuela.Nombre;
+                logoEscuela = escuela.LogoUrl ?? "";
+            }
+
+            var ciclo = await _context.CiclosEscolares.FindAsync(cicloId);
+
+            // 2. Traer alumnos inscritos
             var query = _context.Inscripciones
                 .Include(i => i.Alumno)
-                .Include(i => i.Grupo).ThenInclude(g => g.Grado) // Para mostrar nombre del grupo
-                .Where(i => i.CicloEscolarId == cicloId)
-                .Where(i => i.Activo); // Solo activos
+                .Include(i => i.Grupo).ThenInclude(g => g.Grado).ThenInclude(gr => gr.NivelEducativo)
+                .Where(i => i.CicloEscolarId == cicloId && i.Activo);
 
             if (grupoId.HasValue && grupoId.Value != 0)
             {
-                // Filtrar por grupo específico
                 query = query.Where(i => i.GrupoId == grupoId);
             }
             else
             {
-                // Filtrar por todo el grado (un poco más complejo porque la relación es Inscripcion -> Grupo -> Grado)
-                // OJO: Si hay alumnos sin grupo (preinscritos), hay que ver cómo los manejamos.
-                // Esta query busca alumnos en grupos de ese grado O alumnos sin grupo pero inscritos a ese grado (si guardamos GradoId en algun lado, pero no lo guardamos directo).
-                // Por ahora filtramos por los que TIENEN grupo en ese grado.
                 query = query.Where(i => i.Grupo != null && i.Grupo.GradoId == gradoId);
             }
 
-            return await query
-                .OrderBy(i => i.Alumno.PrimerApellido)
-                .ThenBy(i => i.Alumno.Nombre)
+            // 3. ORDEN ESTRICTO SEP (Paterno, Materno, Nombre)
+            var inscripciones = await query
+                .OrderBy(i => i.Alumno!.PrimerApellido)
+                .ThenBy(i => i.Alumno!.SegundoApellido)
+                .ThenBy(i => i.Alumno!.Nombre)
                 .ToListAsync();
+
+            // 4. Generar título del grupo
+            string nivelGradoGrupo = "Sin Grupo Seleccionado";
+            if (inscripciones.Any())
+            {
+                var primera = inscripciones.First();
+                if (grupoId.HasValue && grupoId.Value != 0)
+                {
+                    nivelGradoGrupo = $"{primera.Grupo!.Grado!.NivelEducativo!.Nombre} - {primera.Grupo.Grado.Nombre} {primera.Grupo.Nombre}";
+                }
+                else
+                {
+                    nivelGradoGrupo = $"{primera.Grupo!.Grado!.NivelEducativo!.Nombre} - {primera.Grupo.Grado.Nombre} (Todos los grupos)";
+                }
+            }
+
+            // 5. Retornar DTO estructurado
+            return Ok(new
+            {
+                EscuelaNombre = nombreEscuela,
+                EscuelaLogo = logoEscuela,
+                CicloNombre = ciclo?.Nombre ?? "",
+                NivelGradoGrupo = nivelGradoGrupo,
+                Alumnos = inscripciones.Select(i => new
+                {
+                    AlumnoId = i.AlumnoId,
+                    Matricula = i.Alumno!.Matricula,
+                    NombreCompleto = $"{i.Alumno.PrimerApellido} {i.Alumno.SegundoApellido} {i.Alumno.Nombre}".Trim(),
+                    GrupoNombre = i.Grupo != null ? $"{i.Grupo.Grado!.Nombre} \"{i.Grupo.Nombre}\"" : "Sin Grupo"
+                }).ToList()
+            });
         }
 
         // 2. VERIFICAR (Actualizado para leer GradoId)
@@ -444,6 +489,267 @@ namespace Gremelik.API.Controllers
 
             return Ok(reporte);
         }
+
+        // --- GESTIÓN ACADÉMICA DE GRUPOS ---
+
+        // --- GESTIÓN ACADÉMICA DE GRUPOS ---
+
+        [HttpGet("por-grado")]
+        public async Task<ActionResult<List<AlumnoGrupoDto>>> GetAlumnosParaGestion([FromQuery] int cicloId, [FromQuery] int gradoId)
+        {
+            if (!_tenantService.TenantId.HasValue) return BadRequest("Escuela no identificada.");
+            var tenantId = _tenantService.TenantId.Value;
+
+            // CORRECCIÓN: Filtramos por Alumno.EscuelaId (Tenant) y buscamos datos nuevos o viejos
+            var inscripciones = await _context.Inscripciones
+                .Include(i => i.Alumno)
+                .Include(i => i.Grupo)
+                .Where(i => i.Alumno!.EscuelaId == tenantId &&
+                            i.CicloEscolarId == cicloId &&
+                            (i.GradoId == gradoId || (i.Grupo != null && i.Grupo.GradoId == gradoId)) &&
+                            i.Activo)
+                .OrderBy(i => i.Alumno!.PrimerApellido)
+                .ThenBy(i => i.Alumno!.Nombre)
+                .Select(i => new AlumnoGrupoDto
+                {
+                    InscripcionId = i.Id,
+                    AlumnoId = i.AlumnoId,
+                    Matricula = i.Alumno!.Matricula,
+                    NombreCompleto = $"{i.Alumno.PrimerApellido} {i.Alumno.SegundoApellido} {i.Alumno.Nombre}".Trim(),
+                    GrupoId = i.GrupoId,
+                    GrupoNombre = i.Grupo != null ? i.Grupo.Nombre : "Sin Asignar"
+                })
+                .ToListAsync();
+
+            return Ok(inscripciones);
+        }
+
+        [HttpPost("mover-grupo")]
+        [Authorize(Roles = "GlobalAdmin, SchoolAdmin, Coordinador")]
+        public async Task<IActionResult> MoverAlumnoDeGrupo([FromBody] MoverAlumnoGrupoDto dto)
+        {
+            var inscripcion = await _context.Inscripciones.FindAsync(dto.InscripcionId);
+            if (inscripcion == null) return NotFound("Inscripción no encontrada.");
+
+            if (dto.NuevoGrupoId.HasValue)
+            {
+                var grupoDestino = await _context.Grupos.FindAsync(dto.NuevoGrupoId.Value);
+                if (grupoDestino == null) return NotFound("El grupo destino no existe.");
+
+                int inscritosActuales = await _context.Inscripciones.CountAsync(i => i.GrupoId == dto.NuevoGrupoId.Value && i.Activo);
+                if (inscritosActuales >= grupoDestino.CupoMaximo)
+                {
+                    return BadRequest($"El grupo {grupoDestino.Nombre} ya alcanzó su cupo máximo de {grupoDestino.CupoMaximo} alumnos.");
+                }
+            }
+
+            inscripcion.GrupoId = dto.NuevoGrupoId;
+            inscripcion.FUM = DateTime.Now;
+
+            _context.Inscripciones.Update(inscripcion);
+            await _context.SaveChangesAsync();
+
+            return Ok(new { mensaje = "Alumno reubicado exitosamente." });
+        }
+
+        [HttpPost("asignacion-random")]
+        [Authorize(Roles = "GlobalAdmin, SchoolAdmin, Coordinador")]
+        public async Task<IActionResult> AsignacionRandom([FromBody] AsignacionRandomDto dto)
+        {
+            if (!_tenantService.TenantId.HasValue) return BadRequest("Escuela no identificada.");
+            var tenantId = _tenantService.TenantId.Value;
+
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                var grupos = await _context.Grupos
+                    .Where(g => g.GradoId == dto.GradoId && g.CicloEscolarId == dto.CicloId && g.Activo)
+                    .ToListAsync();
+
+                if (!grupos.Any()) return BadRequest("No hay grupos creados para este grado.");
+
+                var cuposDisponibles = new Dictionary<int, int>();
+                foreach (var g in grupos)
+                {
+                    int actuales = await _context.Inscripciones.CountAsync(i => i.GrupoId == g.Id && i.Activo);
+                    cuposDisponibles[g.Id] = g.CupoMaximo - actuales;
+                }
+
+                // CORRECCIÓN DE BUG: Filtrar usando Alumno!.EscuelaId
+                var inscripcionesSinGrupo = await _context.Inscripciones
+                    .Include(i => i.Alumno)
+                    .Where(i => i.Alumno!.EscuelaId == tenantId &&
+                                i.CicloEscolarId == dto.CicloId &&
+                                i.GradoId == dto.GradoId &&
+                                i.GrupoId == null &&
+                                i.Activo)
+                    .ToListAsync();
+
+                if (!inscripcionesSinGrupo.Any()) return BadRequest("No hay alumnos pendientes de asignar.");
+
+                var random = new Random();
+                var colaFemenina = new Queue<Inscripcion>(inscripcionesSinGrupo.Where(i => i.Alumno!.Sexo == "F").OrderBy(x => random.Next()));
+                var colaMasculina = new Queue<Inscripcion>(inscripcionesSinGrupo.Where(i => i.Alumno!.Sexo != "F").OrderBy(x => random.Next()));
+
+                int asignados = 0;
+                bool huboAsignacionEnEstaRonda;
+
+                do
+                {
+                    huboAsignacionEnEstaRonda = false;
+
+                    foreach (var grupo in grupos)
+                    {
+                        if (cuposDisponibles[grupo.Id] > 0 && colaFemenina.Any())
+                        {
+                            var nina = colaFemenina.Dequeue();
+                            nina.GrupoId = grupo.Id;
+                            nina.FUM = DateTime.Now;
+                            _context.Inscripciones.Update(nina);
+
+                            cuposDisponibles[grupo.Id]--;
+                            asignados++;
+                            huboAsignacionEnEstaRonda = true;
+                        }
+
+                        if (cuposDisponibles[grupo.Id] > 0 && colaMasculina.Any())
+                        {
+                            var nino = colaMasculina.Dequeue();
+                            nino.GrupoId = grupo.Id;
+                            nino.FUM = DateTime.Now;
+                            _context.Inscripciones.Update(nino);
+
+                            cuposDisponibles[grupo.Id]--;
+                            asignados++;
+                            huboAsignacionEnEstaRonda = true;
+                        }
+                    }
+
+                } while (huboAsignacionEnEstaRonda);
+
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                int faltantes = inscripcionesSinGrupo.Count - asignados;
+                string mensaje = $"✅ Se asignaron {asignados} alumnos manteniendo la paridad de género.";
+                if (faltantes > 0) mensaje += $"\n⚠️ Quedaron {faltantes} alumnos sin asignar por falta de cupo.";
+
+                return Ok(new { mensaje = mensaje });
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                return StatusCode(500, $"Error interno: {ex.Message}");
+            }
+        }
+
+        [HttpPost("asignacion-historica")]
+        [Authorize(Roles = "GlobalAdmin, SchoolAdmin, Coordinador")]
+        public async Task<IActionResult> AsignacionHistorica([FromBody] AsignacionRandomDto dto)
+        {
+            if (!_tenantService.TenantId.HasValue) return BadRequest("Escuela no identificada.");
+            var tenantId = _tenantService.TenantId.Value;
+
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                // 1. Obtener grupos destino del nuevo grado
+                var gruposDestino = await _context.Grupos
+                    .Where(g => g.GradoId == dto.GradoId && g.CicloEscolarId == dto.CicloId && g.Activo)
+                    .ToListAsync();
+
+                if (!gruposDestino.Any()) return BadRequest("No hay grupos creados para este grado.");
+
+                var cuposDisponibles = new Dictionary<int, int>();
+                foreach (var g in gruposDestino)
+                {
+                    int actuales = await _context.Inscripciones.CountAsync(i => i.GrupoId == g.Id && i.Activo);
+                    cuposDisponibles[g.Id] = g.CupoMaximo - actuales;
+                }
+
+                // 2. Obtener alumnos sin grupo en el ciclo actual
+                var inscripcionesSinGrupo = await _context.Inscripciones
+                    .Include(i => i.Alumno)
+                    .Where(i => i.Alumno!.EscuelaId == tenantId &&
+                                i.CicloEscolarId == dto.CicloId &&
+                                i.GradoId == dto.GradoId &&
+                                i.GrupoId == null &&
+                                i.Activo)
+                    .ToListAsync();
+
+                if (!inscripcionesSinGrupo.Any()) return BadRequest("No hay alumnos pendientes de asignar.");
+
+                var cicloDestino = await _context.CiclosEscolares.FindAsync(dto.CicloId);
+                if (cicloDestino == null) return BadRequest("Ciclo no encontrado.");
+
+                int asignados = 0;
+                int sinCupo = 0;
+                int sinHistorial = 0;
+
+                // 3. Procesar a cada alumno
+                foreach (var inscripcion in inscripcionesSinGrupo)
+                {
+                    // Buscar en qué grupo estuvo en su ciclo INMEDIATO ANTERIOR
+                    var inscripcionAnterior = await _context.Inscripciones
+                        .Include(i => i.Grupo)
+                        .Include(i => i.CicloEscolar)
+                        .Where(i => i.AlumnoId == inscripcion.AlumnoId &&
+                                    i.GrupoId != null &&
+                                    i.CicloEscolar!.FechaInicio < cicloDestino.FechaInicio &&
+                                    i.Activo)
+                        .OrderByDescending(i => i.CicloEscolar!.FechaInicio)
+                        .FirstOrDefaultAsync();
+
+                    if (inscripcionAnterior?.Grupo != null)
+                    {
+                        string nombreGrupoAnterior = inscripcionAnterior.Grupo.Nombre; // Ej: "A", "B"
+
+                        // Buscar si existe un salón con ese mismo nombre ("A") en el grado nuevo
+                        var grupoCoincidente = gruposDestino.FirstOrDefault(g => g.Nombre.Trim().ToUpper() == nombreGrupoAnterior.Trim().ToUpper());
+
+                        if (grupoCoincidente != null)
+                        {
+                            if (cuposDisponibles[grupoCoincidente.Id] > 0)
+                            {
+                                inscripcion.GrupoId = grupoCoincidente.Id;
+                                inscripcion.FUM = DateTime.Now;
+                                _context.Inscripciones.Update(inscripcion);
+
+                                cuposDisponibles[grupoCoincidente.Id]--;
+                                asignados++;
+                            }
+                            else
+                            {
+                                sinCupo++;
+                            }
+                        }
+                        else
+                        {
+                            sinHistorial++; // No se abrió el grupo "A" en este grado
+                        }
+                    }
+                    else
+                    {
+                        sinHistorial++; // Es de nuevo ingreso o nunca tuvo grupo
+                    }
+                }
+
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                string mensaje = $"✅ Se asignaron {asignados} alumnos a su misma letra de grupo del ciclo anterior.";
+                if (sinCupo > 0) mensaje += $"\n⚠️ {sinCupo} alumnos no se asignaron porque su grupo equivalente ya está lleno.";
+                if (sinHistorial > 0) mensaje += $"\nℹ️ {sinHistorial} alumnos quedaron pendientes (son de nuevo ingreso o no existe grupo equivalente).";
+
+                return Ok(new { mensaje = mensaje });
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                return StatusCode(500, $"Error interno: {ex.Message}");
+            }
+        }
+
     }
 
 

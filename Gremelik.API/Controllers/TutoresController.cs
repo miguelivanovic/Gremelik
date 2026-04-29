@@ -40,6 +40,36 @@ namespace Gremelik.API.Controllers
             return tutor;
         }
 
+        // GET: api/Tutores/buscar/{q}
+        [HttpGet("buscar/{q}")]
+        public async Task<ActionResult<IEnumerable<Tutor>>> BuscarTutores(string q)
+        {
+            if (string.IsNullOrWhiteSpace(q)) return new List<Tutor>();
+
+            // 1. Partimos la búsqueda
+            var terminos = q.Trim().ToLower().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+            var query = _context.Tutores.Where(t => t.Activo);
+
+            // 2. Filtramos iterando por cada palabra
+            foreach (var termino in terminos)
+            {
+                query = query.Where(t => t.Nombre.ToLower().Contains(termino) ||
+                                         t.PrimerApellido.ToLower().Contains(termino) ||
+                                         (t.SegundoApellido != null && t.SegundoApellido.ToLower().Contains(termino)) ||
+                                         t.RFC.ToLower().Contains(termino) ||
+                                         (t.CorreoElectronico != null && t.CorreoElectronico.ToLower().Contains(termino)) ||
+                                         (t.TelefonoMovil != null && t.TelefonoMovil.Contains(termino)));
+            }
+
+            var tutores = await query
+                .OrderBy(t => t.PrimerApellido).ThenBy(t => t.Nombre)
+                .Take(15)
+                .ToListAsync();
+
+            return tutores;
+        }
+
         // PUT: api/Tutores/5
         [HttpPut("{id}")]
         public async Task<IActionResult> PutTutor(Guid id, Tutor tutor)

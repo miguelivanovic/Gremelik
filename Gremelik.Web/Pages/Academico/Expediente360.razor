@@ -1,0 +1,448 @@
+﻿@page "/academico/expediente-360"
+@page "/academico/expediente-360/{IdParam:guid}"
+@using Microsoft.AspNetCore.Authorization
+@using System.Globalization
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin, Coordinador, Maestro")]
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<PageTitle>Expediente Integral 360</PageTitle>
+
+<style>
+    /* Ocultamos el encabezado en la pantalla normal */
+    .solo-impresion {
+        display: none !important;
+    }
+
+    /* MAGIA PARA IMPRESIÓN BASADA EN TU BOLETA */
+    @@media print {
+        @@page {
+            size: portrait;
+            margin: 0mm; /* Mata la URL y la fecha del navegador */
+        }
+
+        .ocultar-impresion, .sidebar, .top-row, nav, header, footer {
+            display: none !important;
+        }
+
+        body, main, .page, .content {
+            margin: 0 !important;
+            padding: 0 !important;
+            background-color: white !important;
+        }
+        /* Mostramos el encabezado solo al imprimir */
+        .solo-impresion {
+            display: flex !important;
+            padding-top: 1cm;
+            padding-left: 1cm;
+            padding-right: 1cm;
+        }
+
+        .contenedor-pdf {
+            padding-left: 1cm !important;
+            padding-right: 1cm !important;
+            padding-bottom: 1cm !important;
+        }
+
+        .card {
+            border: 1px solid #dee2e6 !important;
+            box-shadow: none !important;
+            break-inside: avoid;
+        }
+
+        .badge {
+            border: 1px solid #000 !important;
+            color: #000 !important;
+            background: transparent !important;
+        }
+    }
+</style>
+
+<div class="container-fluid pb-5">
+
+    <div class="ocultar-impresion">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h3 class="fw-bold text-dark mb-0"><i class="bi bi-person-bounding-box text-primary me-2"></i> Expediente Integral 360</h3>
+                <span class="text-muted small">Radiografía completa del alumno por ciclo escolar</span>
+            </div>
+            @if (expediente != null)
+            {
+                <button class="btn btn-outline-dark fw-bold shadow-sm" @onclick="ImprimirPDF">
+                    <i class="bi bi-printer-fill me-2"></i> Imprimir / PDF
+                </button>
+            }
+        </div>
+
+        <div class="card border-0 shadow-sm bg-light mb-4">
+            <div class="card-body">
+                <div class="row g-2 align-items-end">
+                    <div class="col-md-3">
+                        <label class="fw-bold text-muted small">Ciclo Escolar:</label>
+                        <select class="form-select border-primary" @bind="cicloActualId">
+                            @if (ciclos != null)
+                            {
+                                foreach (var c in ciclos)
+                                {
+                                    <option value="@c.Id">@c.Nombre</option>
+                                }
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="fw-bold text-muted small">Buscar (Nombre o Matrícula):</label>
+                        <div class="input-group">
+                            <input type="text" class="form-control border-primary" placeholder="Ej. Pérez..." @bind="terminoBusqueda" @bind:event="oninput" @onkeyup="BuscarAlumnosTeclado" />
+                            <button class="btn btn-primary" @onclick="BuscarAlumnosBd"><i class="bi bi-search"></i></button>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="fw-bold text-muted small">Selecciona el Alumno:</label>
+                        <select class="form-select border-primary" value="@alumnoId" @onchange="SeleccionarAlumno" disabled="@(alumnosEncontrados == null || !alumnosEncontrados.Any())">
+                            <option value="">-- Resultados (@(alumnosEncontrados?.Count ?? 0)) --</option>
+                            @if (alumnosEncontrados != null)
+                            {
+                                foreach (var a in alumnosEncontrados)
+                                {
+                                    <option value="@a.AlumnoId">@a.NombreCompleto</option>
+                                }
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <button class="btn btn-success w-100 fw-bold shadow-sm" @onclick="CargarExpediente" disabled="@(alumnoId == null || buscando)">
+                            @if (buscando)
+                            {
+                                <span class="spinner-border spinner-border-sm me-2"></span>
+                            }
+                            <i class="bi bi-eye-fill"></i> Ver 360
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (buscando)
+    {
+        <div class="text-center py-5 ocultar-impresion"><div class="spinner-border text-primary" style="width: 4rem; height: 4rem;"></div></div>
+    }
+    else if (expediente != null)
+    {
+        <div>
+            <div class="solo-impresion justify-content-between align-items-center border-bottom border-dark pb-3 mb-4">
+                <div class="d-flex align-items-center">
+                    @if (!string.IsNullOrWhiteSpace(expediente.EscuelaLogoUrl))
+                    {
+                        <img src="@expediente.EscuelaLogoUrl" alt="Logo Colegio" style="max-height: 90px; margin-right: 20px;" />
+                    }
+                    <div>
+                        <h2 class="fw-bold mb-0 text-uppercase" style="color: #0b2b5e;">@expediente.EscuelaNombre</h2>
+                        <h6 class="text-muted fw-bold">@(string.IsNullOrWhiteSpace(expediente.EscuelaSlogan) ? "SISTEMA DE GESTIÓN ESCOLAR" : expediente.EscuelaSlogan.ToUpper())</h6>
+                    </div>
+                </div>
+                <div class="text-end">
+                    <h5 class="fw-bold text-dark mb-0">EXPEDIENTE INTEGRAL</h5>
+                    <span class="text-muted fw-bold d-block">Ciclo Escolar: @cicloActualNombre</span>
+                    <span class="small text-muted">Fecha: @DateTime.Now.ToString("dd/MM/yyyy")</span>
+                </div>
+            </div>
+
+            <div class="contenedor-pdf">
+                <div class="card border-dark shadow-sm mb-4 bg-light border-start border-5" style="border-left-color: #0b2b5e !important;">
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-8">
+                                <h2 class="fw-bold text-dark mb-0">@expediente.NombreCompleto</h2>
+                                <p class="text-muted fw-bold mb-3"><i class="bi bi-upc-scan me-1"></i> Matrícula: @expediente.Matricula | CURP: @expediente.Curp</p>
+
+                                <div class="d-flex gap-4">
+                                    <div><small class="text-muted d-block fw-bold">Tipo de Sangre</small> <span class="text-danger fw-bold"><i class="bi bi-droplet-fill"></i> @expediente.TipoSangre</span></div>
+                                    <div><small class="text-muted d-block fw-bold">Alergias</small> <span class="text-dark fw-bold">@expediente.Alergias</span></div>
+                                    <div><small class="text-muted d-block fw-bold">Emergencias</small> <span class="text-dark fw-bold"><i class="bi bi-telephone-fill"></i> @expediente.ContactoEmergencia</span></div>
+                                </div>
+                            </div>
+                            <div class="col-md-4 text-end">
+                                <h6 class="fw-bold text-muted border-bottom pb-1">Tutores Registrados</h6>
+                                @if (expediente.Tutores.Any())
+                                {
+                                    foreach (var t in expediente.Tutores)
+                                    {
+                                        <div class="small text-start mb-1">
+                                            <i class="bi bi-person-check-fill text-primary"></i> <strong class="text-dark">@t.NombreCompleto</strong> (@t.Parentesco)
+                                        </div>
+                                    }
+                                }
+                                else
+                                {
+                                    <span class="small text-danger">Sin tutores vinculados</span>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <h5 class="fw-bold text-secondary mb-3 border-bottom pb-2"><i class="bi bi-mortarboard-fill me-2"></i> Historial Académico Interno</h5>
+                        <div class="card border-dark shadow-sm">
+                            <div class="card-body p-0">
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-striped table-bordered align-middle mb-0 text-center border-dark">
+                                        <thead class="table-light border-dark">
+                                            <tr>
+                                                <th class="text-start ps-3 align-middle">Materia</th>
+                                                @foreach (var periodo in expediente.PeriodosEvaluados)
+                                                {
+                                                    <th class="text-center align-middle" style="width: 60px; min-width: 60px; max-width: 60px;">@periodo</th>
+                                                }
+                                                <th class="pe-3 bg-light align-middle" style="width: 80px;">Promedio</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="border-dark">
+                                            @foreach (var calif in expediente.Boleta)
+                                            {
+                                                <tr>
+                                                    <td class="text-start ps-3 fw-bold text-dark text-truncate" style="max-width: 200px;">@calif.Materia</td>
+                                                    @foreach (var nota in calif.Notas)
+                                                    {
+                                                        <td class="text-center" style="width: 60px; min-width: 60px; max-width: 60px;">
+                                                            @(nota > 0 ? nota.ToString("0.0") : "-")
+                                                        </td>
+                                                    }
+                                                    <td class="pe-3 fw-bold @(calif.Promedio < 6 ? "text-danger" : "text-success")">
+                                                        @(calif.Promedio > 0 ? calif.Promedio.ToString("0.0") : "-")
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                        <tfoot class="table-light border-dark">
+                                            <tr>
+                                                <td colspan="@(expediente.PeriodosEvaluados.Count + 1)" class="text-end fw-bold">PROMEDIO GENERAL:</td>
+                                                <td class="pe-3 fw-bold fs-5 text-dark">@expediente.PromedioGeneralSEP.ToString("0.0")</td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row g-4">
+
+                    <div class="col-lg-6">
+                        <div class="card border-dark shadow-sm bg-light mb-4">
+                            <div class="card-body d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h6 class="fw-bold text-dark mb-0"><i class="bi bi-calendar-x-fill text-danger me-2"></i> Inasistencias Acumuladas</h6>
+                                    <small class="text-muted">Días que faltó a la escuela en el ciclo</small>
+                                </div>
+                                <h2 class="fw-bold text-danger mb-0">@expediente.TotalFaltas</h2>
+                            </div>
+                        </div>
+
+                        <h5 class="fw-bold text-secondary mb-3 border-bottom pb-2"><i class="bi bi-wallet-fill me-2"></i> Estado de Cuenta</h5>
+                        <div class="row g-2 mb-3">
+                            <div class="col-6">
+                                <div class="p-3 bg-white rounded border border-dark">
+                                    <small class="text-muted fw-bold d-block">Pagado a la fecha</small>
+                                    <h4 class="fw-bold text-success mb-0">@expediente.TotalPagado.ToString("C", new CultureInfo("es-MX"))</h4>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="p-3 bg-white rounded border border-dark">
+                                    <small class="text-muted fw-bold d-block">Deuda Vencida</small>
+                                    <h4 class="fw-bold @(expediente.SaldoVencido > 0 ? "text-danger" : "text-dark") mb-0">@expediente.SaldoVencido.ToString("C", new CultureInfo("es-MX"))</h4>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card border-dark shadow-sm mb-4">
+                            <div class="card-body p-0">
+                                <ul class="list-group list-group-flush">
+                                    @foreach (var cargo in expediente.EstadoDeCuenta.Take(5))
+                                    {
+                                        <li class="list-group-item d-flex justify-content-between align-items-center p-3 border-dark">
+                                            <div>
+                                                <strong class="d-block text-dark small">@cargo.Concepto</strong>
+                                                <span class="text-muted" style="font-size: 0.75rem;">Vence: @cargo.Vencimiento.ToString("dd MMM yyyy")</span>
+                                            </div>
+                                            <div class="text-end">
+                                                @if (cargo.Estado == "PAGADO")
+                                                {
+                                                    <span class="badge bg-success rounded-pill">Pagado</span>
+                                                }
+                                                else
+                                                {
+                                                    <strong class="d-block text-danger small">@cargo.SaldoPendiente.ToString("C", new CultureInfo("es-MX"))</strong>
+                                                    <span class="badge border border-danger text-danger" style="font-size: 0.65rem;">@cargo.Estado</span>
+                                                }
+                                            </div>
+                                        </li>
+                                    }
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-lg-6">
+                        <h5 class="fw-bold text-secondary mb-3 border-bottom pb-2"><i class="bi bi-shield-exclamation me-2"></i> Reportes de Conducta</h5>
+                        <div class="card border-dark shadow-sm">
+                            <div class="card-body p-0">
+                                @if (expediente.ReportesConducta.Any())
+                                {
+                                    <ul class="list-group list-group-flush">
+                                        @foreach (var reporte in expediente.ReportesConducta)
+                                        {
+                                            <li class="list-group-item p-3 border-dark">
+                                                <div class="d-flex justify-content-between">
+                                                    <strong class="text-dark small">@reporte.Titulo</strong>
+                                                    <small class="text-muted">@reporte.Fecha.ToString("dd MMM")</small>
+                                                </div>
+                                                <div class="mt-1">
+                                                    @if (reporte.Gravedad == 1)
+                                                    {
+                                                        <span class="badge bg-secondary" style="font-size: 0.65rem;">Leve</span>
+                                                    }
+                                                    @if (reporte.Gravedad == 2)
+                                                    {
+                                                        <span class="badge bg-warning text-dark" style="font-size: 0.65rem;">Moderada</span>
+                                                    }
+                                                    @if (reporte.Gravedad == 3)
+                                                    {
+                                                        <span class="badge bg-danger" style="font-size: 0.65rem;">Grave</span>
+                                                    }
+                                                    @if (reporte.Gravedad == 4)
+                                                    {
+                                                        <span class="badge bg-dark" style="font-size: 0.65rem;">Muy Grave</span>
+                                                    }
+
+                                                    <span class="ms-1 text-muted" style="font-size: 0.7rem;">Estatus: @reporte.Estatus</span>
+                                                </div>
+                                            </li>
+                                        }
+                                    </ul>
+                                }
+                                else
+                                {
+                                    <div class="p-4 text-center">
+                                        <i class="bi bi-emoji-smile fs-3 text-success d-block mb-1"></i>
+                                        <span class="text-muted small fw-bold">Sin incidencias registradas.</span>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    public class Expediente360Dto
+    {
+        public string EscuelaNombre { get; set; } = "";
+        public string? EscuelaLogoUrl { get; set; }
+        public string? EscuelaSlogan { get; set; }
+
+        public Guid AlumnoId { get; set; }
+        public string Matricula { get; set; } = ""; public string NombreCompleto { get; set; } = ""; public string Curp { get; set; } = "";
+        public string TipoSangre { get; set; } = ""; public string Alergias { get; set; } = ""; public string ContactoEmergencia { get; set; } = "";
+        public List<TutorExpedienteDto> Tutores { get; set; } = new();
+
+        public decimal TotalCargos { get; set; }
+        public decimal TotalPagado { get; set; }
+        public decimal SaldoVencido { get; set; }
+        public int PagosAtrasados { get; set; }
+        public List<CargoExpedienteDto> EstadoDeCuenta { get; set; } = new();
+
+        public int TotalFaltas { get; set; }
+        public decimal PromedioGeneralSEP { get; set; }
+        public List<string> PeriodosEvaluados { get; set; } = new();
+        public List<CalificacionExpedienteDto> Boleta { get; set; } = new();
+
+        public List<ReporteExpedienteDto> ReportesConducta { get; set; } = new();
+    }
+
+    public class TutorExpedienteDto { public string NombreCompleto { get; set; } = ""; public string Parentesco { get; set; } = ""; public string Telefono { get; set; } = ""; }
+    public class CargoExpedienteDto { public string Concepto { get; set; } = ""; public DateTime Vencimiento { get; set; } public decimal MontoBase { get; set; } public decimal SaldoPendiente { get; set; } public string Estado { get; set; } = ""; }
+    public class CalificacionExpedienteDto { public string Materia { get; set; } = ""; public List<decimal> Notas { get; set; } = new(); public decimal Promedio { get; set; } }
+    public class ReporteExpedienteDto { public DateTime Fecha { get; set; } public string Titulo { get; set; } = ""; public int Gravedad { get; set; } public string Estatus { get; set; } = ""; }
+
+    public class AlumnoBusquedaDto { public Guid AlumnoId { get; set; } public string NombreCompleto { get; set; } = ""; }
+    public class CicloEscolarBasico { public int Id { get; set; } public int Estatus { get; set; } public string Nombre { get; set; } = ""; }
+
+    int cicloActualId = 0;
+    string cicloActualNombre = "";
+    List<CicloEscolarBasico>? ciclos;
+
+    string terminoBusqueda = "";
+    List<AlumnoBusquedaDto>? alumnosEncontrados;
+    Guid? alumnoId = null;
+
+    Expediente360Dto? expediente;
+    bool buscando = false;
+
+    // AGREGAR ESTO ADENTRO DEL @code
+    [Parameter]
+    public Guid? IdParam { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        ciclos = await Http.GetFromJsonAsync<List<CicloEscolarBasico>>("api/Ciclos");
+        var activo = ciclos?.FirstOrDefault(c => c.Estatus == 1);
+        if (activo != null) { cicloActualId = activo.Id; cicloActualNombre = activo.Nombre; }
+
+        // MAGIA DE NAVEGACIÓN DIRECTA: Si alguien le dio clic al botón "360" desde la lista
+        if (IdParam.HasValue)
+        {
+            alumnoId = IdParam.Value;
+            await CargarExpediente(); // Carga la radiografía automáticamente
+        }
+    }
+
+    async Task BuscarAlumnosTeclado(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await BuscarAlumnosBd();
+    }
+
+    async Task BuscarAlumnosBd()
+    {
+        if (string.IsNullOrWhiteSpace(terminoBusqueda) || terminoBusqueda.Length < 3) return;
+        alumnosEncontrados = await Http.GetFromJsonAsync<List<AlumnoBusquedaDto>>($"api/Expedientes/buscar?q={terminoBusqueda}");
+        alumnoId = null;
+        expediente = null;
+    }
+
+    void SeleccionarAlumno(ChangeEventArgs e)
+    {
+        if (Guid.TryParse(e.Value?.ToString(), out Guid id)) { alumnoId = id; } else { alumnoId = null; }
+        expediente = null;
+    }
+
+    private async Task CargarExpediente()
+    {
+        if (alumnoId == null) return;
+        buscando = true;
+
+        try
+        {
+            cicloActualNombre = ciclos?.FirstOrDefault(c => c.Id == cicloActualId)?.Nombre ?? "";
+            expediente = await Http.GetFromJsonAsync<Expediente360Dto>($"api/Expedientes/360/{alumnoId}/ciclo/{cicloActualId}");
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", "Error al cargar el expediente.");
+        }
+
+        buscando = false;
+    }
+
+    private async Task ImprimirPDF()
+    {
+        await JS.InvokeVoidAsync("window.print");
+    }
+}

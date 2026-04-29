@@ -1,5 +1,6 @@
 ﻿using Gremelik.core.DTOs;
 using Gremelik.core.Entities;
+using Gremelik.core.Services;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
@@ -16,10 +17,20 @@ namespace Gremelik.API.Controllers
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly IConfiguration _configuration;
 
-        public AuthController(UserManager<ApplicationUser> userManager, IConfiguration configuration)
+        // 1. DECLARAMOS LA VARIABLE DEL SERVICIO
+        private readonly CurrentTenantService _tenantService;
+
+        // 2. LO AGREGAMOS AL CONSTRUCTOR
+        public AuthController(
+            UserManager<ApplicationUser> userManager,
+            IConfiguration configuration,
+            CurrentTenantService tenantService)
         {
             _userManager = userManager;
             _configuration = configuration;
+
+            // 3. LO ASIGNAMOS
+            _tenantService = tenantService;
         }
 
         [HttpPost("register")]
@@ -53,19 +64,60 @@ namespace Gremelik.API.Controllers
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginDto model)
         {
-            var user = await _userManager.FindByEmailAsync(model.Email);
-            if (user == null) return Unauthorized("Usuario no válido.");
+            // 1. Buscamos al usuario. 
+            // TRUCO: Permitimos que inicie sesión con su Correo O con su UserName.
+            var user = await _userManager.FindByEmailAsync(model.Email) ?? await _userManager.FindByNameAsync(model.Email);
 
+            if (user == null) return Unauthorized("Usuario o contraseña incorrectos.");
+
+            // 🛑 EL FILTRO MAESTRO 1: Revisar tu campo personalizado "Activo"
+            if (!user.Activo)
+            {
+                return Unauthorized("Esta cuenta ha sido desactivada por la administración.");
+            }
+
+            // 🛑 EL FILTRO MAESTRO 2: Revisar el bloqueo oficial de Identity (Lockout)
+            if (await _userManager.IsLockedOutAsync(user))
+            {
+                return Unauthorized("Esta cuenta se encuentra suspendida permanentemente.");
+            }
+
+            // ========================================================================
+            // 🛑 EL FILTRO MAESTRO 3: Validar el Dominio vs El Usuario (Multi-Tenant)
+            // ========================================================================
+            var esGlobalAdmin = await _userManager.IsInRoleAsync(user, "GlobalAdmin");
+
+            // Caso A: Intentan entrar al dominio principal (localhost:7106 sin subdominio)
+            if (_tenantService.TenantId == null)
+            {
+                if (!esGlobalAdmin)
+                {
+                    return Unauthorized("Acceso denegado. Este portal es exclusivo para administración central. Por favor, ingresa desde la dirección web de tu escuela.");
+                }
+            }
+            // Caso B: Intentan entrar a un subdominio de una escuela específica
+            else
+            {
+                // Un GlobalAdmin puede entrar a cualquier escuela para dar soporte,
+                // pero si NO es GlobalAdmin, su EscuelaId debe coincidir exactamente con el subdominio.
+                if (!esGlobalAdmin && user.EscuelaId != _tenantService.TenantId)
+                {
+                    return Unauthorized("Acceso denegado. Este usuario no pertenece a esta escuela.");
+                }
+            }
+            // ========================================================================
+
+            // 2. Verificamos la contraseña (Ahora sí, sabiendo que el usuario es válido)
             var checkPassword = await _userManager.CheckPasswordAsync(user, model.Password);
-            if (!checkPassword) return Unauthorized("Contraseña incorrecta.");
+            if (!checkPassword) return Unauthorized("Usuario o contraseña incorrectos.");
 
-            // Generamos el token con Nombre y Roles
+            // 3. Generamos el token con Nombre y Roles
             var token = await GenerarToken(user);
 
             return Ok(new UserSessionDto
             {
                 Token = token,
-                Email = user.Email!,
+                Email = user.UserName!, // Regresamos el UserName como identificador principal
                 Rol = "VerToken" // El rol real viaja encriptado en el token
             });
         }

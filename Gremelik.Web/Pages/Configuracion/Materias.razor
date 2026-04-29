@@ -1,0 +1,337 @@
+﻿@page "/configuracion/materias"
+@using Gremelik.core.Entities
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin, Coordinador")]
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<div class="container-fluid pb-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3><i class="bi bi-book-half text-primary"></i> Catálogo de Materias</h3>
+        <button class="btn btn-primary fw-bold shadow-sm" @onclick="AbrirModalNuevo">
+            <i class="bi bi-plus-lg"></i> Nueva Materia
+        </button>
+    </div>
+
+    <div class="card shadow-sm border-0 bg-light mb-4">
+        <div class="card-body d-flex align-items-center gap-3">
+            <label class="fw-bold text-muted mb-0">Ver materias del Plantel:</label>
+            <select class="form-select w-auto border-primary" value="@plantelFiltroId" @onchange="CambiarPlantelFiltro">
+                <option value="">-- Seleccionar Plantel --</option>
+                @if (planteles != null)
+                {
+                    @foreach (var p in planteles) { <option value="@p.Id">@p.Nombre</option> }
+                }
+            </select>
+        </div>
+    </div>
+
+    @if (cargandoTabla)
+    {
+        <div class="text-center py-4"><div class="spinner-border text-primary"></div></div>
+    }
+    else if (plantelFiltroId != Guid.Empty && (listaMaterias == null || !listaMaterias.Any()))
+    {
+        <div class="alert alert-warning text-center"><i class="bi bi-info-circle"></i> No hay materias registradas en este plantel.</div>
+    }
+    else if (listaMaterias != null && listaMaterias.Any())
+    {
+        <div class="card shadow-sm">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-4">Nombre de la Materia</th>
+                        <th>Aplica al Grado</th>
+                        <th>Aplica al Grupo</th>
+                        <th class="text-end pe-4">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var agrupacion in listaMaterias.GroupBy(m => m.CampoFormativo))
+                    {
+                        <tr class="table-secondary">
+                            <td colspan="4" class="fw-bold text-dark"><i class="bi bi-folder2-open"></i> @agrupacion.Key</td>
+                        </tr>
+
+                        @foreach (var m in agrupacion)
+                        {
+                            <tr>
+                                <td class="ps-5 fw-bold text-primary">
+                                    @if (!string.IsNullOrEmpty(m.ClaveOficial))
+                                    {
+                                        <span class="badge bg-light text-dark border me-2" title="Clave Oficial SEP">@m.ClaveOficial</span>
+                                    }
+                                    @m.Nombre
+                                </td>
+                                <td class="ps-5 fw-bold text-primary">@m.Nombre</td>
+                                <td><span class="badge bg-secondary">@m.GradoNombre</span></td>
+                                <td>
+                                    @if (m.GrupoId == null)
+                                    {
+                                        <span class="badge bg-success">Todos los grupos</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-info text-dark">Solo Grupo @m.GrupoNombre</span>
+                                    }
+                                </td>
+                                <td class="text-end pe-4">
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => EliminarMateria(m.Id, m.Nombre)">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@if (mostrarModal)
+{
+    <div class="modal fade show d-block" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title fw-bold">Crear Nueva Materia</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="() => mostrarModal = false"></button>
+                </div>
+                <div class="modal-body bg-light">
+                    <EditForm Model="@nuevaMateria" OnValidSubmit="GuardarMateria">
+                        <DataAnnotationsValidator />
+
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="fw-bold small text-muted">Clave SEP</label>
+                                <InputText class="form-control" @bind-Value="nuevaMateria.ClaveOficial" placeholder="Ej. MAT01" style="text-transform:uppercase" />
+                            </div>
+                            <div class="col-md-8 mb-3">
+                                <label class="fw-bold small text-muted">Nombre de la Materia *</label>
+                                <InputText class="form-control" @bind-Value="nuevaMateria.Nombre" placeholder="Ej. Matemáticas Avanzadas" />
+                                <ValidationMessage For="@(() => nuevaMateria.Nombre)" />
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="fw-bold small text-muted">Campo Formativo / Área Académica</label>
+                            <select class="form-select border-primary" @bind="nuevaMateria.CampoFormativo">
+                                <option value="Sin Especificar">-- Seleccionar (Opcional) --</option>
+                                <optgroup label="Educación Básica (SEP)">
+                                    <option value="Lenguajes">Lenguajes (Español, Inglés, Artes)</option>
+                                    <option value="Saberes y Pensamiento Científico">Saberes y Pensamiento Científico (Matemáticas, Ciencias)</option>
+                                    <option value="Ética, Naturaleza y Sociedades">Ética, Naturaleza y Sociedades (Historia, Geografía)</option>
+                                    <option value="De lo Humano y lo Comunitario">De lo Humano y lo Comunitario (Educación Física, Socioemocional)</option>
+                                </optgroup>
+                                <optgroup label="Otras Áreas">
+                                    <option value="Paraescolares / Talleres">Paraescolares / Talleres Extraescolares</option>
+                                    <option value="Materias de Especialidad">Materias de Especialidad (Prepa/Universidad)</option>
+                                </optgroup>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="fw-bold small text-muted">Plantel *</label>
+                            <select class="form-select" value="@nuevaMateria.PlantelId" @onchange="ModalCambiarPlantel">
+                                <option value="">-- Seleccionar --</option>
+                                @if (planteles != null)
+                                {
+                                    @foreach (var p in planteles) { <option value="@p.Id">@p.Nombre</option> }
+                                }
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="fw-bold small text-muted">Nivel Educativo</label>
+                            <select class="form-select" @onchange="ModalCambiarNivel" disabled="@(niveles == null)">
+                                <option value="">-- Seleccionar --</option>
+                                @if (niveles != null)
+                                {
+                                    @foreach (var n in niveles) { <option value="@n.Id">@n.Nombre</option> }
+                                }
+                            </select>
+                        </div>
+
+                        <div class="row g-2 mb-3">
+                            <div class="col-md-6">
+                                <label class="fw-bold small text-muted">Grado (Opcional)</label>
+                                <select class="form-select" value="@nuevaMateria.GradoId" @onchange="ModalCambiarGrado" disabled="@(grados == null)">
+                                    <option value="0">Todos los grados</option>
+                                    @if (grados != null)
+                                    {
+                                        @foreach (var g in grados) { <option value="@g.Id">@g.Nombre</option> }
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="fw-bold small text-muted">Grupo Exclusivo (Opcional)</label>
+                                <select class="form-select" @bind="nuevaMateria.GrupoId" disabled="@(grupos == null || nuevaMateria.GradoId == 0)">
+                                    <option value="0">Todos los grupos</option>
+                                    @if (grupos != null)
+                                    {
+                                        @foreach (var g in grupos) { <option value="@g.Id">@g.Nombre (@g.Turno)</option> }
+                                    }
+                                </select>
+                            </div>
+                        </div>
+                        <small class="text-muted d-block mb-4">
+                            <i class="bi bi-info-circle"></i> Si dejas Grado y Grupo en "Todos", la materia aplicará para toda la escuela.
+                        </small>
+
+                        <div class="d-flex justify-content-end gap-2">
+                            <button type="button" class="btn btn-secondary fw-bold" @onclick="() => mostrarModal = false">Cancelar</button>
+                            <button type="submit" class="btn btn-primary fw-bold" disabled="@enviando">
+                                @if (enviando) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                                Guardar Materia
+                            </button>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    public class MateriaVistaDto
+    {
+        public Guid Id { get; set; }
+        public string? ClaveOficial { get; set; } // <--- NUEVO
+        public string Nombre { get; set; } = "";
+        public string CampoFormativo { get; set; } = ""; // <--- NUEVO
+        public int? GradoId { get; set; }
+        public string GradoNombre { get; set; } = "";
+        public int? GrupoId { get; set; }
+        public string GrupoNombre { get; set; } = "";
+    }
+
+    List<Plantel>? planteles;
+    List<MateriaVistaDto>? listaMaterias;
+    Guid plantelFiltroId = Guid.Empty;
+    bool cargandoTabla = false;
+
+    // Variables Modal
+    bool mostrarModal = false;
+    bool enviando = false;
+    Materia nuevaMateria = new() { Nombre = "", Usuario = "" };
+    
+    List<NivelEducativo>? niveles;
+    List<Grado>? grados;
+    List<Grupo>? grupos;
+    List<CicloEscolar>? ciclos;
+    int cicloActualId = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        planteles = await Http.GetFromJsonAsync<List<Plantel>>("api/Planteles");
+        ciclos = await Http.GetFromJsonAsync<List<CicloEscolar>>("api/Ciclos");
+        
+        var activo = ciclos?.FirstOrDefault(c => c.Estatus == EstatusCiclo.Actual);
+        if (activo != null) cicloActualId = activo.Id;
+
+        // Si solo hay un plantel, lo pre-seleccionamos
+        if (planteles != null && planteles.Count == 1)
+        {
+            plantelFiltroId = planteles.First().Id;
+            await CargarTablaMaterias();
+        }
+    }
+
+    private async Task CambiarPlantelFiltro(ChangeEventArgs e)
+    {
+        if (Guid.TryParse(e.Value?.ToString(), out Guid id))
+        {
+            plantelFiltroId = id;
+            await CargarTablaMaterias();
+        }
+        else
+        {
+            plantelFiltroId = Guid.Empty;
+            listaMaterias = null;
+        }
+    }
+
+    private async Task CargarTablaMaterias()
+    {
+        cargandoTabla = true;
+        listaMaterias = await Http.GetFromJsonAsync<List<MateriaVistaDto>>($"api/Materias/plantel/{plantelFiltroId}");
+        cargandoTabla = false;
+    }
+
+    private void AbrirModalNuevo()
+    {
+        nuevaMateria = new Materia { ClaveOficial = "", Nombre = "", Usuario = "", GradoId = 0, GrupoId = 0, CampoFormativo = "Sin Especificar" };
+        niveles = null; grados = null; grupos = null;
+        mostrarModal = true;
+    }
+
+    // --- CASCADAS DEL MODAL ---
+    private async Task ModalCambiarPlantel(ChangeEventArgs e)
+    {
+        if (Guid.TryParse(e.Value?.ToString(), out Guid id))
+        {
+            nuevaMateria.PlantelId = id;
+            niveles = await Http.GetFromJsonAsync<List<NivelEducativo>>($"api/Niveles/plantel/{id}");
+        }
+        grados = null; grupos = null; nuevaMateria.GradoId = 0; nuevaMateria.GrupoId = 0;
+    }
+
+    private async Task ModalCambiarNivel(ChangeEventArgs e)
+    {
+        if (Guid.TryParse(e.Value?.ToString(), out Guid id))
+            grados = await Http.GetFromJsonAsync<List<Grado>>($"api/Grados/nivel/{id}");
+        grupos = null; nuevaMateria.GradoId = 0; nuevaMateria.GrupoId = 0;
+    }
+
+    private async Task ModalCambiarGrado(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int id) && id != 0)
+        {
+            nuevaMateria.GradoId = id;
+            // Para las materias, buscamos los grupos del ciclo actual
+            if(cicloActualId != 0)
+                grupos = await Http.GetFromJsonAsync<List<Grupo>>($"api/Grupos/grado/{id}/ciclo/{cicloActualId}");
+        }
+        else
+        {
+            nuevaMateria.GradoId = 0;
+            grupos = null;
+        }
+        nuevaMateria.GrupoId = 0;
+    }
+
+    // --- CRUD ---
+    private async Task GuardarMateria()
+    {
+        if (nuevaMateria.PlantelId == Guid.Empty)
+        {
+            await JS.InvokeVoidAsync("alert", "Debes seleccionar un plantel."); return;
+        }
+
+        enviando = true;
+        var res = await Http.PostAsJsonAsync("api/Materias", nuevaMateria);
+        enviando = false;
+
+        if (res.IsSuccessStatusCode)
+        {
+            mostrarModal = false;
+            if (nuevaMateria.PlantelId == plantelFiltroId) await CargarTablaMaterias(); // Recargar si es el mismo plantel que estamos viendo
+        }
+        else
+        {
+            await JS.InvokeVoidAsync("alert", "Error al guardar la materia.");
+        }
+    }
+
+    private async Task EliminarMateria(Guid id, string nombre)
+    {
+        if (await JS.InvokeAsync<bool>("confirm", $"¿Seguro que deseas eliminar la materia '{nombre}'?"))
+        {
+            var res = await Http.DeleteAsync($"api/Materias/{id}");
+            if (res.IsSuccessStatusCode)
+            {
+                await CargarTablaMaterias();
+            }
+        }
+    }
+}

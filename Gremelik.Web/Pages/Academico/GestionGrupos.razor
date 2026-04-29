@@ -1,0 +1,367 @@
+﻿@page "/academico/asignacion"
+@using Gremelik.core.Entities
+@using Gremelik.core.DTOs
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Text.Json
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin, Coordinador")]
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<div class="container-fluid pb-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3><i class="bi bi-diagram-3-fill text-primary"></i> Gestión y Reubicación de Grupos</h3>
+    </div>
+
+    <div class="card shadow-sm border-0 bg-light mb-4">
+        <div class="card-body">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-3">
+                    <label class="fw-bold text-muted small">Ciclo Escolar:</label>
+                    <select class="form-select border-primary fw-bold" @bind="cicloId" @bind:after="CargarListas">
+                        <option value="0">-- Seleccionar --</option>
+                        @if (ciclos != null)
+                        {
+                            @foreach (var c in ciclos) { <option value="@c.Id">@c.Nombre</option> }
+                        }
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="fw-bold text-muted small">Plantel:</label>
+                    <select class="form-select" @bind="plantelId" @bind:after="CargarNiveles">
+                        <option value="">-- Seleccionar --</option>
+                        @if (planteles != null)
+                        {
+                            @foreach (var p in planteles) { <option value="@p.Id">@p.Nombre</option> }
+                        }
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="fw-bold text-muted small">Nivel:</label>
+                    <select class="form-select" @bind="nivelId" @bind:after="CargarGrados" disabled="@(niveles == null)">
+                        <option value="">-- Seleccionar --</option>
+                        @if (niveles != null)
+                        {
+                            @foreach (var n in niveles) { <option value="@n.Id">@n.Nombre</option> }
+                        }
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="fw-bold text-muted small">Grado:</label>
+                    <select class="form-select" @bind="gradoId" @bind:after="CargarListas" disabled="@(grados == null)">
+                        <option value="0">-- Seleccionar --</option>
+                        @if (grados != null)
+                        {
+                            @foreach (var g in grados) { <option value="@g.Id">@g.Nombre</option> }
+                        }
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (cargando)
+    {
+        <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+    }
+    else if (cicloId != 0 && gradoId != 0 && alumnos != null)
+    {
+        <div class="row">
+            <div class="col-lg-5">
+                <div class="card shadow-sm border-warning h-100">
+                    <div class="card-header bg-warning text-dark">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="fw-bold"><i class="bi bi-person-exclamation"></i> Sin Asignar (@alumnosSinGrupo.Count())</span>
+                            
+                            <AuthorizeView Roles="GlobalAdmin, SchoolAdmin, Coordinador">
+                                <Authorized>
+                                    @if (alumnosSinGrupo.Any() && grupos != null && grupos.Any())
+                                    {
+                                        <div class="d-flex gap-1">
+                                            <button class="btn btn-sm btn-outline-dark bg-white shadow-sm" title="Mantener la letra de grupo del ciclo anterior" @onclick="EjecutarAsignacionHistorica">
+                                                <i class="bi bi-clock-history"></i> Histórico
+                                            </button>
+                                            <button class="btn btn-sm btn-dark shadow-sm" title="Repartir 50/50 Niños y Niñas" @onclick="EjecutarAsignacionRandom">
+                                                <i class="bi bi-shuffle"></i> Aleatorio
+                                            </button>
+                                        </div>
+                                    }
+                                </Authorized>
+                            </AuthorizeView>
+                        </div>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                            <input type="text" class="form-control" placeholder="Buscar por nombre o apellido..." @bind="filtroSinGrupo" @bind:event="oninput" />
+                        </div>
+                    </div>
+                    <div class="card-body p-0" style="max-height: 600px; overflow-y: auto;">
+                        @if (!alumnosSinGrupoFiltrados.Any())
+                        {
+                            <div class="p-4 text-center text-muted">No se encontraron alumnos pendientes.</div>
+                        }
+                        else
+                        {
+                            <ul class="list-group list-group-flush">
+                                @foreach (var a in alumnosSinGrupoFiltrados)
+                                {
+                                    <li class="list-group-item bg-transparent">
+                                        <div class="fw-bold text-dark">@a.NombreCompleto</div>
+                                        <small class="text-muted">@a.Matricula</small>
+
+                                        <AuthorizeView Roles="GlobalAdmin, SchoolAdmin, Coordinador" Context="authContext">
+                                            <Authorized>
+                                                <div class="input-group input-group-sm mt-2">
+                                                    <select class="form-select" @onchange="(e) => MoverAlumno(a.InscripcionId, e.Value)">
+                                                        <option value="">Meter a...</option>
+                                                        @if (grupos != null)
+                                                        {
+                                                            @foreach (var g in grupos)
+                                                            {
+                                                                <option value="@g.Id">@g.Nombre (@g.Turno)</option>
+                                                            }
+                                                        }
+                                                    </select>
+                                                </div>
+                                            </Authorized>
+                                        </AuthorizeView>
+                                    </li>
+                                }
+                            </ul>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-7">
+                @if (grupos == null || !grupos.Any())
+                {
+                    <div class="alert alert-danger shadow-sm">
+                        <i class="bi bi-exclamation-triangle-fill"></i> No hay grupos configurados para este grado. Ve a "Apertura de Grupos" primero.
+                    </div>
+                }
+                else
+                {
+                    <div class="accordion shadow-sm" id="accordionGrupos">
+                        @foreach (var grupo in grupos)
+                        {
+                            var alumnosDelGrupo = alumnos.Where(a => a.GrupoId == grupo.Id).ToList();
+                            double porcentaje = (double)alumnosDelGrupo.Count / grupo.CupoMaximo * 100;
+                            string colorBarra = porcentaje >= 100 ? "bg-danger" : porcentaje >= 80 ? "bg-warning" : "bg-success";
+
+                            <div class="accordion-item">
+                                <h2 class="accordion-header" id="head-@grupo.Id">
+                                    <button class="accordion-button @(gruposExpandidos.Contains(grupo.Id) ? "" : "collapsed")"
+                                            type="button"
+                                            @onclick="() => ToggleGrupo(grupo.Id)">
+
+                                        <div class="w-100 me-3">
+                                            <div class="d-flex justify-content-between mb-1">
+                                                <span class="fw-bold fs-5 text-primary">Grupo "@grupo.Nombre"</span>
+                                                <span class="badge bg-light text-dark border">@alumnosDelGrupo.Count / @grupo.CupoMaximo alumnos</span>
+                                            </div>
+                                            <div class="progress" style="height: 5px;">
+                                                <div class="progress-bar @colorBarra" style="width: @porcentaje%"></div>
+                                            </div>
+                                        </div>
+                                    </button>
+                                </h2>
+                                <div id="col-@grupo.Id" class="accordion-collapse collapse @(gruposExpandidos.Contains(grupo.Id) ? "show" : "")">
+                                    <div class="accordion-body p-0">
+                                        @if (!alumnosDelGrupo.Any())
+                                        {
+                                            <div class="p-3 text-center text-muted small">Salón vacío.</div>
+                                        }
+                                        else
+                                        {
+                                            <table class="table table-sm table-hover mb-0 align-middle">
+                                                <tbody>
+                                                    @foreach (var a in alumnosDelGrupo)
+                                                    {
+                                                        <tr>
+                                                            <td class="ps-3">
+                                                                <span class="fw-bold">@a.NombreCompleto</span><br />
+                                                                <small class="text-muted">@a.Matricula</small>
+                                                            </td>
+                                                            <td class="text-end pe-3">
+                                                                <AuthorizeView Roles="GlobalAdmin, SchoolAdmin, Coordinador" Context="authContext">
+                                                                    <Authorized>
+                                                                        <button class="btn btn-sm btn-outline-danger" title="Sacar del grupo"
+                                                                                @onclick="() => MoverAlumno(a.InscripcionId, null)">
+                                                                            <i class="bi bi-person-dash"></i>
+                                                                        </button>
+                                                                    </Authorized>
+                                                                </AuthorizeView>
+                                                            </td>
+                                                        </tr>
+                                                    }
+                                                </tbody>
+                                            </table>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    }
+    else if (cicloId == 0 || gradoId == 0)
+    {
+        <div class="text-center text-muted mt-5 pt-5">
+            <i class="bi bi-funnel fs-1"></i>
+            <p class="mt-2">Selecciona un Ciclo y un Grado para ver los salones y alumnos.</p>
+        </div>
+    }
+</div>
+
+@code {
+    List<CicloEscolar>? ciclos;
+    List<Plantel>? planteles;
+    List<NivelEducativo>? niveles;
+    List<Grado>? grados;
+    List<Grupo>? grupos;
+
+    int cicloId = 0;
+    Guid? plantelId;
+    Guid? nivelId;
+    int gradoId = 0;
+
+    List<AlumnoGrupoDto>? alumnos;
+
+    // --- LÓGICA DE FILTRADO EN TIEMPO REAL ---
+    string filtroSinGrupo = "";
+    IEnumerable<AlumnoGrupoDto> alumnosSinGrupo => alumnos?.Where(a => a.GrupoId == null) ?? Array.Empty<AlumnoGrupoDto>();
+    IEnumerable<AlumnoGrupoDto> alumnosSinGrupoFiltrados => 
+        alumnosSinGrupo.Where(a => string.IsNullOrWhiteSpace(filtroSinGrupo) || 
+                                   a.NombreCompleto.Contains(filtroSinGrupo, StringComparison.OrdinalIgnoreCase) ||
+                                   a.Matricula.Contains(filtroSinGrupo, StringComparison.OrdinalIgnoreCase));
+    
+    bool cargando = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        ciclos = await Http.GetFromJsonAsync<List<CicloEscolar>>("api/Ciclos");
+        planteles = await Http.GetFromJsonAsync<List<Plantel>>("api/Planteles");
+
+        var activo = ciclos?.FirstOrDefault(c => c.Estatus == EstatusCiclo.Actual);
+        if (activo != null) cicloId = activo.Id;
+    }
+
+    async Task CargarNiveles()
+    {
+        if (plantelId.HasValue) niveles = await Http.GetFromJsonAsync<List<NivelEducativo>>($"api/Niveles/plantel/{plantelId.Value}");
+        else { niveles = null; nivelId = null; }
+        grados = null; gradoId = 0; alumnos = null; grupos = null;
+    }
+
+    async Task CargarGrados()
+    {
+        if (nivelId.HasValue) grados = await Http.GetFromJsonAsync<List<Grado>>($"api/Grados/nivel/{nivelId.Value}");
+        else { grados = null; gradoId = 0; }
+        alumnos = null; grupos = null;
+    }
+
+    async Task CargarListas()
+    {
+        if (cicloId == 0 || gradoId == 0) return;
+        cargando = true;
+        filtroSinGrupo = ""; // Limpiamos la búsqueda al cambiar de grado
+
+        try
+        {
+            grupos = await Http.GetFromJsonAsync<List<Grupo>>($"api/Grupos/grado/{gradoId}/ciclo/{cicloId}");
+            alumnos = await Http.GetFromJsonAsync<List<AlumnoGrupoDto>>($"api/Inscripciones/por-grado?cicloId={cicloId}&gradoId={gradoId}");
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", "Error al cargar datos: " + ex.Message);
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    async Task MoverAlumno(Guid inscripcionId, object? valorGrupo)
+    {
+        int? nuevoGrupoId = null;
+        if (valorGrupo != null && int.TryParse(valorGrupo.ToString(), out int id))
+        {
+            nuevoGrupoId = id;
+        }
+
+        var dto = new MoverAlumnoGrupoDto { InscripcionId = inscripcionId, NuevoGrupoId = nuevoGrupoId };
+        var res = await Http.PostAsJsonAsync("api/Inscripciones/mover-grupo", dto);
+
+        if (res.IsSuccessStatusCode)
+        {
+            await CargarListas(); 
+        }
+        else
+        {
+            var msg = await res.Content.ReadAsStringAsync();
+            await JS.InvokeVoidAsync("alert", $"Error: {msg}");
+        }
+    }
+
+    async Task EjecutarAsignacionRandom()
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "¿Deseas repartir aleatoriamente a los alumnos sin grupo? Esto respetará el cupo máximo y mantendrá paridad de género.")) return;
+
+        cargando = true;
+        try
+        {
+            var dto = new AsignacionRandomDto { CicloId = cicloId, GradoId = gradoId };
+            var res = await Http.PostAsJsonAsync("api/Inscripciones/asignacion-random", dto);
+            
+            var msg = await res.Content.ReadFromJsonAsync<JsonElement>();
+            await JS.InvokeVoidAsync("alert", msg.GetProperty("mensaje").GetString());
+            
+            await CargarListas(); 
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", "Error: " + ex.Message);
+            cargando = false;
+        }
+    }
+
+    // --- NUEVO: ASIGNACIÓN HISTÓRICA ---
+    async Task EjecutarAsignacionHistorica()
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "¿Deseas colocar a los alumnos en el mismo salón (letra) que tenían en su ciclo anterior?")) return;
+
+        cargando = true;
+        try
+        {
+            var dto = new AsignacionRandomDto { CicloId = cicloId, GradoId = gradoId };
+            var res = await Http.PostAsJsonAsync("api/Inscripciones/asignacion-historica", dto);
+            
+            var msg = await res.Content.ReadFromJsonAsync<JsonElement>();
+            await JS.InvokeVoidAsync("alert", msg.GetProperty("mensaje").GetString());
+            
+            await CargarListas(); 
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", "Error: " + ex.Message);
+            cargando = false;
+        }
+    }
+
+    // --- LÓGICA DEL ACORDEÓN ---
+    HashSet<int> gruposExpandidos = new();
+
+    void ToggleGrupo(int grupoId)
+    {
+        if (gruposExpandidos.Contains(grupoId))
+        {
+            gruposExpandidos.Remove(grupoId); // Si estaba abierto, lo cierra
+        }
+        else
+        {
+            gruposExpandidos.Add(grupoId); // Si estaba cerrado, lo abre
+        }
+    }
+}

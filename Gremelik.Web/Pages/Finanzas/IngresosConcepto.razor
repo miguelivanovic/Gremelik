@@ -1,6 +1,6 @@
 ﻿@page "/finanzas/ingresos-concepto"
 @using Gremelik.core.DTOs
-@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin")]
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin, Coordinador")]
 @inject HttpClient Http
 @inject IJSRuntime JS
 
@@ -10,7 +10,21 @@
     </div>
 
     <div class="card shadow-sm mb-4 border-0 bg-light">
-        <div class="card-body d-flex gap-3 align-items-end">
+        <div class="card-body d-flex gap-3 align-items-end flex-wrap">
+            <div>
+                <label class="fw-bold text-muted small">Ciclo Escolar:</label>
+                <select class="form-select fw-bold border-primary" @bind="cicloFiltroId">
+                    <option value="0">-- Todos los ciclos --</option>
+                    @if (ciclos != null)
+                    {
+                        @foreach (var c in ciclos)
+                        {
+                            <option value="@c.Id">@c.Nombre @(c.Actual ? "(ACTUAL)" : "")</option>
+                        }
+                    }
+                </select>
+            </div>
+
             <div>
                 <label class="fw-bold text-muted small">Fecha Inicio:</label>
                 <input type="date" class="form-control" @bind="fechaInicio" />
@@ -19,6 +33,7 @@
                 <label class="fw-bold text-muted small">Fecha Fin:</label>
                 <input type="date" class="form-control" @bind="fechaFin" />
             </div>
+
             <button class="btn btn-primary fw-bold px-4" @onclick="CargarReporte">
                 <i class="bi bi-search"></i> Consultar
             </button>
@@ -104,14 +119,27 @@
 </div>
 
 @code {
-    DateTime fechaInicio = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1); // Primer día del mes por defecto
-    DateTime fechaFin = DateTime.Today; // Hoy por defecto
+    public class CicloEscolarBasico { public int Id { get; set; } public bool Actual { get; set; } public string Nombre { get; set; } = ""; }
+
+    DateTime fechaInicio = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+    DateTime fechaFin = DateTime.Today;
+    int cicloFiltroId = 0; // NUEVA VARIABLE PARA EL CICLO
 
     List<IngresoPorConceptoDto>? reporte;
+    List<CicloEscolarBasico>? ciclos; // LISTA DE CICLOS
     bool cargando = true;
 
     protected override async Task OnInitializedAsync()
     {
+        // CARGAR LOS CICLOS AL ENTRAR A LA PANTALLA
+        ciclos = await Http.GetFromJsonAsync<List<CicloEscolarBasico>>("api/Ciclos");
+        if (ciclos != null)
+        {
+            var actual = ciclos.FirstOrDefault(c => c.Actual);
+            if (actual != null) cicloFiltroId = actual.Id;
+            else if (ciclos.Any()) cicloFiltroId = ciclos.First().Id;
+        }
+
         await CargarReporte();
     }
 
@@ -123,7 +151,11 @@
             var fInicio = fechaInicio.ToString("yyyy-MM-dd");
             var fFin = fechaFin.ToString("yyyy-MM-dd");
 
-            reporte = await Http.GetFromJsonAsync<List<IngresoPorConceptoDto>>($"api/ReportesFinancieros/ingresos-concepto?fechaInicio={fInicio}&fechaFin={fFin}");
+            // AGREGAMOS EL CICLO A LA URL
+            var url = $"api/ReportesFinancieros/ingresos-concepto?fechaInicio={fInicio}&fechaFin={fFin}";
+            if (cicloFiltroId > 0) url += $"&cicloId={cicloFiltroId}";
+
+            reporte = await Http.GetFromJsonAsync<List<IngresoPorConceptoDto>>(url);
         }
         catch (Exception ex)
         {
@@ -140,17 +172,15 @@
     {
         var fInicio = fechaInicio.ToString("yyyy-MM-dd");
         var fFin = fechaFin.ToString("yyyy-MM-dd");
+
+        // AGREGAMOS EL CICLO A LA URL DEL EXCEL TAMBIÉN
         var url = $"api/ReportesFinancieros/ingresos-concepto/excel?fechaInicio={fInicio}&fechaFin={fFin}";
+        if (cicloFiltroId > 0) url += $"&cicloId={cicloFiltroId}";
 
         try
         {
-            // 1. Descargamos los bytes del Excel usando tu HttpClient autorizado
             var fileBytes = await Http.GetByteArrayAsync(url);
-
-            // 2. Lo convertimos a formato Base64 para mandarlo al navegador
             var base64 = Convert.ToBase64String(fileBytes);
-
-            // 3. Disparamos la función JavaScript que acabamos de crear
             await JS.InvokeVoidAsync("descargarExcelBase64", $"Reporte_Ingresos_{fInicio}.xlsx", base64);
         }
         catch (Exception ex)

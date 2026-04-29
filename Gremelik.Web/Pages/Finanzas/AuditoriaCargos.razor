@@ -1,0 +1,296 @@
+﻿@page "/finanzas/auditoria-cargos"
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin, Coordinador, Cajero")]
+@inject HttpClient Http
+@inject NavigationManager NavManager
+
+<PageTitle>Auditoría de Cobranza</PageTitle>
+
+<div class="container-fluid pb-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h3 class="fw-bold text-dark mb-0"><i class="bi bi-shield-lock-fill text-danger me-2"></i> Auditoría de Cargos</h3>
+            <p class="text-muted mb-0">Detecta alumnos inscritos que no tienen un plan de pagos o a los que les faltan cargos obligatorios.</p>
+        </div>
+    </div>
+
+    <div class="card mb-4 shadow-sm border-0 bg-light">
+        <div class="card-body py-3">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-3">
+                    <label class="small text-muted fw-bold">Ciclo Escolar</label>
+                    <select class="form-select border-danger fw-bold" value="@cicloId" @onchange="CambiarCiclo">
+                        @if (ciclos != null)
+                        {
+                            @foreach (var c in ciclos)
+                            {
+                                <option value="@c.Id">@c.Nombre @(c.Actual ? "(ACTUAL)" : "")</option>
+                            }
+                        }
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="small text-muted fw-bold">Plantel</label>
+                    <select class="form-select border-primary" value="@plantelId" @onchange="CargarNiveles">
+                        <option value="">-- Todos --</option>
+                        @if (planteles != null)
+                        {
+                            @foreach (var p in planteles)
+                            {
+                                <option value="@p.Id">@p.Nombre</option>
+                            }
+                        }
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="small text-muted fw-bold">Nivel</label>
+                    <select class="form-select border-primary" value="@nivelId" @onchange="CargarGrados" disabled="@(niveles == null)">
+                        <option value="">-- Todos --</option>
+                        @if (niveles != null)
+                        {
+                            @foreach (var n in niveles)
+                            {
+                                <option value="@n.Id">@n.Nombre</option>
+                            }
+                        }
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="small text-muted fw-bold">Grado</label>
+                    <select class="form-select border-primary" value="@gradoId" @onchange="CargarGrupos" disabled="@(grados == null)">
+                        <option value="0">-- Todos --</option>
+                        @if (grados != null)
+                        {
+                            @foreach (var g in grados)
+                            {
+                                <option value="@g.Id">@g.Nombre</option>
+                            }
+                        }
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="small text-muted fw-bold">Grupo</label>
+                    <select class="form-select border-primary" value="@grupoId" @onchange="CargarLista" disabled="@(grupos == null)">
+                        <option value="0">-- Todos --</option>
+                        @if (grupos != null)
+                        {
+                            @foreach (var gr in grupos)
+                            {
+                                <option value="@gr.Id">@gr.Nombre</option>
+                            }
+                        }
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (cargando)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-danger"></div>
+            <p class="mt-2 text-muted fw-bold">Auditando alumnos...</p>
+        </div>
+    }
+    else if (listaAuditoria != null)
+    {
+        if (listaAuditoria.Any())
+        {
+            <div class="alert alert-danger shadow-sm border-start border-4 border-danger mb-4">
+                <i class="bi bi-exclamation-triangle-fill fs-5 me-2"></i>
+                Se encontraron <strong>@listaAuditoria.Count</strong> alumnos con irregularidades en su estado de cuenta para este ciclo.
+            </div>
+
+            <div class="card border-0 shadow-sm">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="text-center text-muted" style="width: 50px;">#</th>
+                                <th style="width: 120px;">Matrícula</th>
+                                <th>Nombre del Alumno</th>
+                                <th>Ubicación Académica</th>
+                                <th>Motivo / Faltante</th>
+                                <th class="text-end pe-4" style="width: 180px;">Acción Requerida</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @{
+                                int i = 1;
+                            }
+                            @foreach (var item in listaAuditoria)
+                            {
+                                <tr>
+                                    <td class="text-center text-muted small fw-bold">@(i++)</td>
+                                    <td class="fw-bold text-secondary">@item.Matricula</td>
+                                    <td class="fw-bold text-dark">@item.NombreCompleto</td>
+                                    <td>
+                                        <div class="small fw-bold text-dark">@item.Nivel - @item.Grado</div>
+                                        <span class="badge bg-light text-dark border">Grupo: @item.Grupo</span>
+                                    </td>
+
+                                    <td class="fw-bold text-danger small">
+                                        <i class="bi bi-x-circle-fill me-1"></i> @item.Motivo
+                                    </td>
+
+                                    <td class="text-end pe-4">
+                                        <button class="btn btn-sm btn-danger fw-bold shadow-sm" @onclick="() => IrAGenerar(item.AlumnoId)">
+                                            <i class="bi bi-cash-coin me-1"></i> Corregir
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="card border-0 shadow-sm bg-success bg-opacity-10 border-success border-start border-4">
+                <div class="card-body text-center py-5">
+                    <i class="bi bi-check-circle-fill text-success" style="font-size: 4rem;"></i>
+                    <h4 class="fw-bold text-success mt-3">¡Todo en orden!</h4>
+                    <p class="text-muted mb-0">Todos los alumnos inscritos bajo estos filtros tienen su plan de pagos y cargos obligatorios completos.</p>
+                </div>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    // --- CLASES DTO ---
+    public class AlumnoAuditoriaDto
+    {
+        public Guid AlumnoId { get; set; }
+        public string Matricula { get; set; } = "";
+        public string NombreCompleto { get; set; } = "";
+        public string Nivel { get; set; } = "";
+        public string Grado { get; set; } = "";
+        public string Grupo { get; set; } = "";
+        public string Motivo { get; set; } = "";
+    }
+
+    public class CicloEscolarSimple { public int Id { get; set; } public string Nombre { get; set; } = ""; public bool Actual { get; set; } }
+    public class ItemSimple { public Guid Id { get; set; } public string Nombre { get; set; } = ""; }
+    public class GradoSimple { public int Id { get; set; } public string Nombre { get; set; } = ""; }
+    public class GrupoSimple { public int Id { get; set; } public string Nombre { get; set; } = ""; }
+
+    // --- VARIABLES ---
+    List<CicloEscolarSimple>? ciclos;
+    List<ItemSimple>? planteles;
+    List<ItemSimple>? niveles;
+    List<GradoSimple>? grados;
+    List<GrupoSimple>? grupos;
+
+    List<AlumnoAuditoriaDto>? listaAuditoria;
+
+    int cicloId = 0;
+    Guid plantelId = Guid.Empty;
+    Guid nivelId = Guid.Empty;
+    int gradoId = 0;
+    int grupoId = 0;
+    bool cargando = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        planteles = await Http.GetFromJsonAsync<List<ItemSimple>>("api/Planteles");
+        var todosCiclos = await Http.GetFromJsonAsync<List<CicloEscolarSimple>>("api/Ciclos");
+
+        if (todosCiclos != null)
+        {
+            ciclos = todosCiclos.OrderByDescending(c => c.Id).ToList();
+            var actual = ciclos.FirstOrDefault(c => c.Actual);
+            cicloId = actual != null ? actual.Id : ciclos.First().Id;
+
+            await EjecutarAuditoria();
+        }
+    }
+
+    // --- MÉTODOS DE CASCADA Y LIMPIEZA ---
+    async Task CambiarCiclo(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int id))
+        {
+            cicloId = id;
+            if (gradoId != 0)
+            {
+                grupos = await Http.GetFromJsonAsync<List<GrupoSimple>>($"api/Grupos/grado/{gradoId}/ciclo/{cicloId}");
+                grupoId = 0;
+            }
+            await EjecutarAuditoria();
+        }
+    }
+
+    async Task CargarNiveles(ChangeEventArgs e)
+    {
+        if (Guid.TryParse(e.Value?.ToString(), out Guid id) && id != Guid.Empty)
+        {
+            plantelId = id;
+            niveles = await Http.GetFromJsonAsync<List<ItemSimple>>($"api/Niveles/plantel/{id}");
+        }
+        else { plantelId = Guid.Empty; niveles = null; }
+
+        nivelId = Guid.Empty; grados = null; gradoId = 0; grupos = null; grupoId = 0;
+        await EjecutarAuditoria();
+    }
+
+    async Task CargarGrados(ChangeEventArgs e)
+    {
+        if (Guid.TryParse(e.Value?.ToString(), out Guid id) && id != Guid.Empty)
+        {
+            nivelId = id;
+            grados = await Http.GetFromJsonAsync<List<GradoSimple>>($"api/Grados/nivel/{id}");
+        }
+        else { nivelId = Guid.Empty; grados = null; }
+
+        gradoId = 0; grupos = null; grupoId = 0;
+        await EjecutarAuditoria();
+    }
+
+    async Task CargarGrupos(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int id) && id != 0)
+        {
+            gradoId = id;
+            grupos = await Http.GetFromJsonAsync<List<GrupoSimple>>($"api/Grupos/grado/{id}/ciclo/{cicloId}");
+        }
+        else { gradoId = 0; grupos = null; }
+
+        grupoId = 0;
+        await EjecutarAuditoria();
+    }
+
+    async Task CargarLista(ChangeEventArgs? e)
+    {
+        if (e != null && int.TryParse(e.Value?.ToString(), out int id)) { grupoId = id; }
+        await EjecutarAuditoria();
+    }
+
+    // --- CONSULTA A LA API ---
+    async Task EjecutarAuditoria()
+    {
+        if (cicloId == 0) return;
+
+        cargando = true;
+
+        var queryParams = new List<string> { $"cicloId={cicloId}" };
+        if (plantelId != Guid.Empty) queryParams.Add($"plantelId={plantelId}");
+        if (nivelId != Guid.Empty) queryParams.Add($"nivelId={nivelId}");
+        if (gradoId > 0) queryParams.Add($"gradoId={gradoId}");
+        if (grupoId > 0) queryParams.Add($"grupoId={grupoId}");
+
+        string url = $"api/ReportesFinancieros/auditoria-sin-cargos?{string.Join("&", queryParams)}";
+
+        try { listaAuditoria = await Http.GetFromJsonAsync<List<AlumnoAuditoriaDto>>(url); }
+        catch { listaAuditoria = new(); }
+
+        cargando = false;
+    }
+
+    // --- NAVEGACIÓN ---
+    void IrAGenerar(Guid id)
+    {
+        NavManager.NavigateTo($"/finanzas/asignacion-cargos/{id}");
+    }
+}

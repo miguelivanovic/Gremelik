@@ -1,0 +1,353 @@
+﻿@page "/finanzas/resumen-global"
+@using Gremelik.core.DTOs
+@using Gremelik.core.Entities
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin")]
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<div class="container-fluid pb-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3><i class="bi bi-bar-chart-line-fill text-primary"></i> Dashboard Financiero</h3>
+
+        <button class="btn btn-outline-danger fw-bold shadow-sm" @onclick="DescargarPDF">
+            <i class="bi bi-file-earmark-pdf-fill"></i> Reporte PDF
+        </button>
+    </div>
+
+    <div class="card shadow-sm border-0 bg-light mb-4">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="fw-bold text-muted small">Ciclo Escolar:</label>
+                    <select class="form-select border-primary fw-bold" @bind="cicloSeleccionadoId" @bind:after="CargarReporte">
+                        <option value="0">-- Selecciona --</option>
+                        @if (ciclos != null)
+                        {
+                            @foreach (var c in ciclos)
+                            {
+                                <option value="@c.Id">@c.Nombre</option>
+                            }
+                        }
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="fw-bold text-muted small">Plantel (Opcional):</label>
+                    <select class="form-select" @bind="plantelId" @bind:after="AlCambiarFiltrosBase">
+                        <option value="">TODOS</option>
+                        @if (planteles != null)
+                        {
+                            @foreach (var p in planteles)
+                            {
+                                <option value="@p.Id">@p.Nombre</option>
+                            }
+                        }
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="fw-bold text-muted small">Nivel (Opcional):</label>
+                    <select class="form-select" @bind="nivelId" @bind:after="AlCambiarFiltrosBase" disabled="@(niveles == null)">
+                        <option value="">TODOS</option>
+                        @if (niveles != null)
+                        {
+                            @foreach (var n in niveles)
+                            {
+                                <option value="@n.Id">@n.Nombre</option>
+                            }
+                        }
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="fw-bold text-muted small">Grado (Opcional):</label>
+                    <select class="form-select" @bind="gradoId" @bind:after="CargarReporte" disabled="@(grados == null)">
+                        <option value="">TODOS</option>
+                        @if (grados != null)
+                        {
+                            @foreach (var g in grados)
+                            {
+                                <option value="@g.Id">@g.Nombre</option>
+                            }
+                        }
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (cargando)
+    {
+        <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+    }
+    else if (resumen == null && cicloSeleccionadoId != 0)
+    {
+        <div class="alert alert-danger">Error al cargar la información financiera.</div>
+    }
+    else if (resumen != null)
+    {
+        <div class="row g-3 mb-4">
+            <div class="col-md-3">
+                <div class="card shadow-sm border-success h-100">
+                    <div class="card-body text-center">
+                        <i class="bi bi-wallet2 display-6 text-success opacity-50 mb-2"></i>
+                        <h6 class="text-uppercase text-muted fw-bold">Ingreso Real</h6>
+                        <h3 class="mb-0 fw-bold text-success">$@resumen.TotalCobrado.ToString("N0")</h3>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="card shadow-sm border-danger h-100 bg-danger bg-opacity-10">
+                    <div class="card-body text-center">
+                        <i class="bi bi-exclamation-triangle-fill display-6 text-danger opacity-50 mb-2"></i>
+                        <h6 class="text-uppercase text-danger fw-bold">Cartera Vencida</h6>
+                        <h3 class="mb-0 fw-bold text-danger">$@resumen.TotalVencido.ToString("N0")</h3>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="card shadow-sm border-warning h-100">
+                    <div class="card-body text-center">
+                        <i class="bi bi-calendar-event display-6 text-warning opacity-50 mb-2"></i>
+                        <h6 class="text-uppercase text-muted fw-bold">Por Cobrar (Futuro)</h6>
+                        <h3 class="mb-0 fw-bold text-warning">$@resumen.TotalPorCobrarFuturo.ToString("N0")</h3>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="card shadow-sm bg-dark text-white h-100">
+                    <div class="card-body text-center d-flex flex-column justify-content-center">
+                        <h6 class="text-uppercase opacity-75">Proyección del Ciclo</h6>
+                        <h2 class="mb-0 fw-bold text-info">$@resumen.ValorTotalCiclo.ToString("N0")</h2>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-white fw-bold py-3">
+                <i class="bi bi-graph-up text-primary"></i> Análisis Mensual de Cobranza (Haz clic en un mes para ver detalles)
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="ps-4">Mes</th>
+                                <th>Avance de Cobro</th>
+                                <th class="text-end text-success">Cobrado</th>
+                                <th class="text-end text-danger">Vencido</th>
+                                <th class="text-end text-muted pe-4">Futuro</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (!resumen.DesgloseMensual.Any())
+                            {
+                                <tr><td colspan="5" class="py-4 text-center text-muted">No hay datos con los filtros seleccionados.</td></tr>
+                            }
+                            else
+                            {
+                                @foreach (var mes in resumen.DesgloseMensual)
+                                {
+                                    <tr style="cursor: pointer;" class="@(mesSeleccionadoNumero == mes.NumeroMes ? "table-primary border-primary" : "table-hover")"
+                                        @onclick="() => CargarDesgloseMensual(mes.NumeroMes, mes.Mes)">
+                                        <td class="ps-4 fw-bold text-dark">
+                                            @if (mesSeleccionadoNumero == mes.NumeroMes)
+                                            {
+                                                <i class="bi bi-chevron-down me-1"></i>
+                                            }
+                                            else
+                                            {
+                                                <i class="bi bi-chevron-right me-1 text-muted"></i>
+                                            }
+                                            @mes.Mes
+                                        </td>
+                                        <td style="width: 30%;">
+                                            <div class="d-flex justify-content-between small mb-1">
+                                                <span class="text-success fw-bold">@mes.PorcentajeAvance.ToString("0.0")% Pagado</span>
+                                            </div>
+                                            <div class="progress" style="height: 6px;">
+                                                <div class="progress-bar bg-success" style="width: @mes.PorcentajeAvance.ToString("0")%"></div>
+                                                <div class="progress-bar bg-danger" style="width: @mes.PorcentajeVencido.ToString("0")%"></div>
+                                            </div>
+                                        </td>
+                                        <td class="text-end fw-bold text-success">@((mes.Cobrado > 0) ? "$" + mes.Cobrado.ToString("N0") : "-")</td>
+                                        <td class="text-end fw-bold text-danger">@((mes.Vencido > 0) ? "$" + mes.Vencido.ToString("N0") : "-")</td>
+                                        <td class="text-end text-muted pe-4">@((mes.Pendiente > 0) ? "$" + mes.Pendiente.ToString("N0") : "-")</td>
+                                    </tr>
+
+                                    @if (mesSeleccionadoNumero == mes.NumeroMes)
+                                    {
+                                        <tr>
+                                            <td colspan="5" class="p-0 border-0">
+                                                <div class="bg-light p-3 border-start border-5 border-primary shadow-inner">
+                                                    <h6 class="text-primary fw-bold mb-3"><i class="bi bi-list-nested"></i> Detalle de @mes.Mes por Conceptos</h6>
+                                                    @if (cargandoConceptos)
+                                                    {
+                                                        <div class="spinner-border spinner-border-sm text-primary"></div>
+                                                    }
+                                                    else if (conceptosMensuales != null && conceptosMensuales.Any())
+                                                    {
+                                                        <table class="table table-sm table-bordered bg-white mb-0">
+                                                            <thead class="table-light">
+                                                                <tr>
+                                                                    <th>Concepto Cobrado</th>
+                                                                    <th class="text-end">Monto Pagado</th>
+                                                                    <th class="text-end">Deuda Actual</th>
+                                                                    <th class="text-end">Programado</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                @foreach (var conc in conceptosMensuales)
+                                                                {
+                                                                    <tr>
+                                                                        <td class="fw-bold">@conc.Concepto</td>
+                                                                        <td class="text-end text-success">@((conc.Cobrado > 0) ? "$" + conc.Cobrado.ToString("N0") : "-")</td>
+                                                                        <td class="text-end text-danger">@((conc.Vencido > 0) ? "$" + conc.Vencido.ToString("N0") : "-")</td>
+                                                                        <td class="text-end text-muted">@((conc.Pendiente > 0) ? "$" + conc.Pendiente.ToString("N0") : "-")</td>
+                                                                    </tr>
+                                                                }
+                                                            </tbody>
+                                                        </table>
+                                                    }
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    List<CicloEscolar>? ciclos;
+    List<Plantel>? planteles;
+    List<NivelEducativo>? niveles;
+    List<Grado>? grados;
+
+    int cicloSeleccionadoId = 0;
+    Guid? plantelId;
+    Guid? nivelId;
+    int? gradoId;
+
+    ResumenFinancieroGlobalDto? resumen;
+    bool cargando = true;
+
+    // --- VARIABLES PARA EL DESGLOSE ---
+    int mesSeleccionadoNumero = 0;
+    bool cargandoConceptos = false;
+    List<ConceptoFinancieroMensualDto>? conceptosMensuales;
+    // ----------------------------------
+
+    protected override async Task OnInitializedAsync()
+    {
+        planteles = await Http.GetFromJsonAsync<List<Plantel>>("api/Planteles");
+        var todosCiclos = await Http.GetFromJsonAsync<List<CicloEscolar>>("api/Ciclos");
+
+        if (todosCiclos != null)
+        {
+            ciclos = todosCiclos.OrderByDescending(c => c.FechaInicio).ToList();
+            var activo = ciclos.FirstOrDefault(c => c.Estatus == EstatusCiclo.Actual);
+            if (activo != null)
+            {
+                cicloSeleccionadoId = activo.Id;
+                await CargarReporte();
+            }
+            else { cargando = false; }
+        }
+    }
+
+    async Task AlCambiarFiltrosBase()
+    {
+        if (plantelId.HasValue) niveles = await Http.GetFromJsonAsync<List<NivelEducativo>>($"api/Niveles/plantel/{plantelId.Value}");
+        else { niveles = null; nivelId = null; }
+
+        if (nivelId.HasValue) grados = await Http.GetFromJsonAsync<List<Grado>>($"api/Grados/nivel/{nivelId.Value}");
+        else { grados = null; gradoId = null; }
+
+        await CargarReporte();
+    }
+
+    async Task CargarReporte()
+    {
+        if (cicloSeleccionadoId == 0) return;
+        cargando = true;
+        mesSeleccionadoNumero = 0; // Cerramos el panel al cambiar de filtro
+        try
+        {
+            var url = $"api/ReportesFinancieros/resumen-global/{cicloSeleccionadoId}?";
+            if (plantelId.HasValue) url += $"plantelId={plantelId.Value}&";
+            if (nivelId.HasValue) url += $"nivelId={nivelId.Value}&";
+            if (gradoId.HasValue) url += $"gradoId={gradoId.Value}";
+
+            resumen = await Http.GetFromJsonAsync<ResumenFinancieroGlobalDto>(url);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error: {ex.Message}");
+            resumen = null;
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    // --- EL EVENTO QUE ABRE EL PANEL ---
+    async Task CargarDesgloseMensual(int numeroMes, string nombreMes)
+    {
+        // Si damos clic al mes que ya está abierto, lo cerramos
+        if (mesSeleccionadoNumero == numeroMes)
+        {
+            mesSeleccionadoNumero = 0;
+            return;
+        }
+
+        mesSeleccionadoNumero = numeroMes;
+        cargandoConceptos = true;
+
+        try
+        {
+            // Extraemos el año y el mes gracias a la matemática que hicimos en el DTO (Ej: 202509 -> Año 2025, Mes 9)
+            int anio = numeroMes / 100;
+            int mes = numeroMes % 100;
+
+            var url = $"api/ReportesFinancieros/desglose-mensual/{cicloSeleccionadoId}?anio={anio}&mes={mes}&";
+            if (plantelId.HasValue) url += $"plantelId={plantelId.Value}&";
+            if (nivelId.HasValue) url += $"nivelId={nivelId.Value}&";
+            if (gradoId.HasValue) url += $"gradoId={gradoId.Value}";
+
+            conceptosMensuales = await Http.GetFromJsonAsync<List<ConceptoFinancieroMensualDto>>(url);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error cargando conceptos: {ex.Message}");
+            conceptosMensuales = null;
+        }
+        finally
+        {
+            cargandoConceptos = false;
+        }
+    }
+
+    private async Task DescargarPDF()
+    {
+        var url = $"api/ReportesFinancieros/resumen-global/pdf/{cicloSeleccionadoId}";
+        try
+        {
+            var fileBytes = await Http.GetByteArrayAsync(url);
+            var base64 = Convert.ToBase64String(fileBytes);
+            // AQUÍ MANDAMOS LLAMAR A LA NUEVA FUNCIÓN QUE ABRE EN OTRA PESTAÑA
+            await JS.InvokeVoidAsync("abrirPdfBase64NuevaPestana", base64);
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error al generar el PDF: {ex.Message}");
+        }
+    }
+}

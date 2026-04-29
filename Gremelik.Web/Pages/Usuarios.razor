@@ -4,17 +4,27 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin")]
 @inject HttpClient Http
+@inject IJSRuntime JS
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h3>Personal de la Escuela</h3>
-    <button class="btn btn-primary" @onclick="AbrirModal">
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3><i class="bi bi-people-fill text-primary"></i> Personal de la Escuela</h3>
+    <button class="btn btn-primary shadow-sm fw-bold" @onclick="AbrirModalNuevo">
         <i class="bi bi-person-plus-fill"></i> Nuevo Usuario
     </button>
 </div>
 
+<div class="card shadow-sm border-0 bg-light mb-4">
+    <div class="card-body py-2">
+        <div class="input-group">
+            <span class="input-group-text bg-white border-end-0"><i class="bi bi-search text-muted"></i></span>
+            <input type="text" class="form-control border-start-0" placeholder="Buscar empleado por nombre, usuario o email..." @bind="textoBusqueda" @bind:event="oninput" />
+        </div>
+    </div>
+</div>
+
 @if (mensaje != null)
 {
-    <div class="alert alert-info alert-dismissible fade show">
+    <div class="alert @claseAlerta alert-dismissible fade show shadow-sm">
         @mensaje
         <button type="button" class="btn-close" @onclick="() => mensaje = null"></button>
     </div>
@@ -22,153 +32,319 @@
 
 @if (usuarios == null)
 {
-    <div class="spinner-border text-primary" role="status">
-        <span class="visually-hidden">Cargando...</span>
-    </div>
+    <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
 }
 else if (!usuarios.Any())
 {
-    <div class="alert alert-warning">No hay usuarios registrados aparte de ti.</div>
+    <div class="alert alert-warning text-center m-4">No hay usuarios registrados aparte de ti.</div>
 }
 else
 {
-    <table class="table table-hover">
-        <thead class="table-light">
-            <tr>
-                <th>Nombre</th>
-                <th>Email</th>
-                <th>Rol</th>
-                <th>Acciones</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var u in usuarios)
-            {
-                <tr>
-                    <td>@u.NombreCompleto</td>
-                    <td>@u.Email</td>
-                    <td><span class="badge bg-secondary">@u.Rol</span></td>
-                    <td>
-                        <button class="btn btn-sm btn-outline-danger">Baja</button>
-                    </td>
-                </tr>
-            }
-        </tbody>
-    </table>
+    <div class="card shadow-sm border-0">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="ps-4">Nombre / Contacto</th>
+                            <th>Acceso (Usuario)</th>
+                            <th>Rol en el Sistema</th>
+                            <th class="text-end pe-4">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var u in UsuariosFiltrados)
+                        {
+                            <tr class="@(u.Activo ? "" : "bg-light")">
+                                <td class="ps-4">
+                                    <div class="fw-bold @(u.Activo ? "" : "text-decoration-line-through text-muted")">
+                                        @u.NombreCompleto
+                                        @if (!u.Activo)
+                                        {
+                                            <span class="badge bg-danger ms-2" style="font-size: 0.65rem;">INACTIVO</span>
+                                        }
+                                    </div>
+                                    <div class="small text-muted">
+                                        <i class="bi bi-envelope"></i> @u.Email | 
+                                        <i class="bi bi-telephone"></i> @(string.IsNullOrEmpty(u.Telefono) ? "Sin tel" : u.Telefono)
+                                    </div>
+                                </td>
+                                <td><span class="fw-bold text-primary">@u.UserName</span></td>
+                                <td><span class="badge bg-info text-dark border">@u.Rol</span></td>
+                                <td class="text-end pe-4">
+                                    @if (u.Activo)
+                                    {
+                                        <button class="btn btn-sm btn-outline-dark shadow-sm me-1" title="Cambiar Contraseña" @onclick="() => AbrirModalPassword(u)">
+                                            <i class="bi bi-key-fill"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-secondary shadow-sm me-1" title="Editar Perfil" @onclick="() => AbrirModalEditar(u)">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-danger shadow-sm" title="Dar de Baja" @onclick="() => EliminarUsuario(u.Id, u.NombreCompleto)">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted small fst-italic">Cuenta Suspendida</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 }
 
 @if (mostrarFormulario)
 {
-    <div class="card mt-4 border-primary shadow">
-        <div class="card-header bg-primary text-white d-flex justify-content-between">
-            <span>Registrar Nuevo Colaborador</span>
-            <button class="btn-close btn-close-white" @onclick="() => mostrarFormulario = false"></button>
+    <div class="modal d-block" style="background: rgba(0,0,0,0.5)">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header @(esEdicion ? "bg-warning" : "bg-primary") text-white">
+                    <h5 class="modal-title fw-bold text-dark"><i class="bi @(esEdicion ? "bi-pencil-square" : "bi-person-badge")"></i> @(esEdicion ? "Editar Perfil" : "Registrar Nuevo Colaborador")</h5>
+                    <button type="button" class="btn-close" @onclick="() => mostrarFormulario = false"></button>
+                </div>
+                <div class="modal-body bg-light">
+                    <EditForm Model="@usuarioActual" OnValidSubmit="GuardarUsuario">
+                        <DataAnnotationsValidator />
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="fw-bold text-muted small">Nombre Completo:</label>
+                                <InputText class="form-control" @bind-Value="usuarioActual.NombreCompleto" placeholder="Ej. Juan Pérez" />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="fw-bold text-muted small">Usuario de Acceso:</label>
+                                <InputText class="@(esEdicion ? "form-control bg-light text-muted" : "form-control")" @bind-Value="usuarioActual.UserName" disabled="@esEdicion" placeholder="Ej. juan.perez" />
+                                @if (esEdicion) { <small class="text-muted" style="font-size:0.75rem;">El nombre de usuario no se puede cambiar.</small> }
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="fw-bold text-muted small">Correo Electrónico:</label>
+                                <InputText type="email" class="form-control" @bind-Value="usuarioActual.Email" placeholder="juan@escuela.com" />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="fw-bold text-muted small">Teléfono (Opcional):</label>
+                                <InputText class="form-control" @bind-Value="usuarioActual.Telefono" placeholder="10 dígitos" />
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            @if (!esEdicion)
+                            {
+                                <div class="col-md-6 mb-3">
+                                    <label class="fw-bold text-muted small">Contraseña (Min. 4 caracteres):</label>
+                                    <InputText type="password" class="form-control border-danger" @bind-Value="usuarioActual.Password" />
+                                </div>
+                            }
+                            <div class="@(esEdicion ? "col-md-12" : "col-md-6") mb-3">
+                                <label class="fw-bold text-muted small">Rol Asignado:</label>
+                                <InputSelect class="form-select border-primary" @bind-Value="usuarioActual.Rol">
+                                    <option value="">-- Selecciona Rol --</option>
+                                    @if (rolesDisponibles != null)
+                                    {
+                                        @foreach (var rol in rolesDisponibles)
+                                        {
+                                            <option value="@rol">@rol</option>
+                                        }
+                                    }
+                                </InputSelect>
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-end mt-4 border-top pt-3">
+                            <button type="button" class="btn btn-secondary me-2 fw-bold" @onclick="() => mostrarFormulario = false">Cancelar</button>
+                            <button type="submit" class="btn @(esEdicion ? "btn-warning" : "btn-success") fw-bold text-dark" disabled="@procesando">
+                                @if (procesando) { <span class="spinner-border spinner-border-sm me-2"></span> }
+                                <i class="bi bi-save"></i> @(esEdicion ? "Guardar Cambios" : "Crear Usuario")
+                            </button>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
         </div>
-        <div class="card-body">
-            <EditForm Model="@nuevoUsuario" OnSubmit="GuardarUsuario">
-                <DataAnnotationsValidator />
+    </div>
+}
 
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label>Nombre Completo:</label>
-                        <InputText class="form-control" @bind-Value="nuevoUsuario.NombreCompleto" />
-                    </div>
-                    <div class="col-md-6 mb-3">
-                        <label>Email (Usuario):</label>
-                        <InputText class="form-control" @bind-Value="nuevoUsuario.Email" />
-                    </div>
+@if (mostrarModalPassword)
+{
+    <div class="modal d-block" style="background: rgba(0,0,0,0.5)">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header bg-dark text-white">
+                    <h6 class="modal-title fw-bold"><i class="bi bi-key"></i> Nueva Contraseña</h6>
+                    <button type="button" class="btn-close btn-close-white" @onclick="() => mostrarModalPassword = false"></button>
                 </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-3">Asignar nueva clave para <strong>@nombreUsuarioPassword</strong>.</p>
+                    
+                    <input type="password" class="form-control mb-2" placeholder="Nueva contraseña..." @bind="nuevaPassword" @bind:event="oninput" />
+                    <input type="password" class="@(nuevaPassword != confirmarPassword && !string.IsNullOrEmpty(confirmarPassword) ? "form-control mb-2 is-invalid" : "form-control mb-2")" 
+                           placeholder="Confirmar contraseña..." @bind="confirmarPassword" @bind:event="oninput" />
+                    
+                    @if (nuevaPassword != confirmarPassword && !string.IsNullOrEmpty(confirmarPassword))
+                    {
+                        <div class="text-danger small mb-3 fw-bold">Las contraseñas no coinciden.</div>
+                    }
 
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label>Contraseña:</label>
-                        <InputText type="password" class="form-control" @bind-Value="nuevoUsuario.Password" />
-                    </div>
-                    <div class="col-md-6 mb-3">
-                        <label>Rol:</label>
-                        <InputSelect class="form-select" @bind-Value="nuevoUsuario.Rol">
-                            <option value="User">Maestro / Staff</option>
-                            <option value="SchoolAdmin">Co-Director</option>
-                        </InputSelect>
-                    </div>
+                    <button class="btn btn-danger w-100 fw-bold shadow-sm mt-2" @onclick="CambiarPassword" 
+                            disabled="@(string.IsNullOrWhiteSpace(nuevaPassword) || nuevaPassword != confirmarPassword || procesando)">
+                        @if (procesando) { <span class="spinner-border spinner-border-sm"></span> } else { <span>Confirmar Cambio</span> }
+                    </button>
                 </div>
-
-                <div class="d-flex justify-content-end gap-2">
-                    <button type="button" class="btn btn-secondary" @onclick="() => mostrarFormulario = false">Cancelar</button>
-                    <button type="submit" class="btn btn-success">Crear Usuario</button>
-                </div>
-            </EditForm>
+            </div>
         </div>
     </div>
 }
 
 @code {
-    // Clase auxiliar para recibir datos
-    public class UsuarioSimple
-    {
-        public string Id { get; set; } = "";
-        public string NombreCompleto { get; set; } = "";
-        public string Email { get; set; } = "";
-        public string Rol { get; set; } = "";
+    public class UsuarioSimple 
+    { 
+        public string Id { get; set; } = ""; 
+        public string UserName { get; set; } = ""; 
+        public string NombreCompleto { get; set; } = ""; 
+        public string Email { get; set; } = ""; 
+        public string? Telefono { get; set; } 
+        public string Rol { get; set; } = ""; 
+        public bool Activo { get; set; } = true; // <-- Importante para saber si está dado de baja
     }
 
     private List<UsuarioSimple>? usuarios;
-    private RegisterDto nuevoUsuario = new() { Rol = "User" }; // Por defecto crea 'User'
+    private List<string>? rolesDisponibles;
+    
+    // Búsqueda
+    private string textoBusqueda = "";
+    private IEnumerable<UsuarioSimple> UsuariosFiltrados => 
+        string.IsNullOrWhiteSpace(textoBusqueda) ? usuarios ?? new() : 
+        usuarios!.Where(u => u.NombreCompleto.Contains(textoBusqueda, StringComparison.OrdinalIgnoreCase) || 
+                             u.UserName.Contains(textoBusqueda, StringComparison.OrdinalIgnoreCase) ||
+                             u.Email.Contains(textoBusqueda, StringComparison.OrdinalIgnoreCase));
+
+    // Formulario Principal
+    private RegisterDto usuarioActual = new() { Rol = "", UserName = "", Email = "", NombreCompleto = "", Password = "" };
     private bool mostrarFormulario = false;
+    private bool esEdicion = false;
+    private string idEdicion = "";
+    
+    // Modal Password
+    private bool mostrarModalPassword = false;
+    private string idUsuarioPassword = "";
+    private string nombreUsuarioPassword = "";
+    private string nuevaPassword = "";
+    private string confirmarPassword = "";
+
+    // UI Feedback
     private string? mensaje;
+    private string claseAlerta = "alert-info";
+    private bool procesando = false;
 
     protected override async Task OnInitializedAsync()
     {
+        await CargarRoles();
         await CargarUsuarios();
     }
 
-    private async Task CargarUsuarios()
-    {
-        try
-        {
-            usuarios = await Http.GetFromJsonAsync<List<UsuarioSimple>>("api/Usuarios");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine("Error: " + ex.Message);
-        }
-    }
+    private async Task CargarRoles() { try { rolesDisponibles = await Http.GetFromJsonAsync<List<string>>("api/Usuarios/roles"); } catch { } }
+    private async Task CargarUsuarios() { try { usuarios = await Http.GetFromJsonAsync<List<UsuarioSimple>>("api/Usuarios"); } catch { } }
 
-    private void AbrirModal()
+    private void AbrirModalNuevo()
     {
-        nuevoUsuario = new() { Rol = "User", NombreEscuela = "", Subdominio = "" };
+        esEdicion = false;
+        usuarioActual = new() { Rol = "", UserName = "", Email = "", NombreCompleto = "", Password = "", Telefono = "" };
         mostrarFormulario = true;
         mensaje = null;
     }
 
+    private void AbrirModalEditar(UsuarioSimple u)
+    {
+        esEdicion = true;
+        idEdicion = u.Id;
+        usuarioActual = new() { NombreCompleto = u.NombreCompleto, UserName = u.UserName, Email = u.Email, Telefono = u.Telefono, Rol = u.Rol, Password = "N/A" };
+        mostrarFormulario = true;
+        mensaje = null;
+    }
+
+    private void AbrirModalPassword(UsuarioSimple u)
+    {
+        idUsuarioPassword = u.Id;
+        nombreUsuarioPassword = u.UserName;
+        nuevaPassword = "";
+        confirmarPassword = "";
+        mostrarModalPassword = true;
+        mensaje = null;
+    }
+
+    private void MostrarMensaje(string texto, bool esError = false)
+    {
+        mensaje = texto;
+        claseAlerta = esError ? "alert-danger" : "alert-success";
+    }
+
     private async Task GuardarUsuario(EditContext context)
     {
-        // Validacion manual simple si DataAnnotations falla
-        if (string.IsNullOrWhiteSpace(nuevoUsuario.Email) || string.IsNullOrWhiteSpace(nuevoUsuario.Password))
-        {
-            mensaje = "Email y contraseña son obligatorios.";
-            return;
-        }
+        if (string.IsNullOrWhiteSpace(usuarioActual.Rol)) { MostrarMensaje("El Rol es obligatorio.", true); return; }
 
+        procesando = true;
         try
         {
-            var respuesta = await Http.PostAsJsonAsync("api/Usuarios", nuevoUsuario);
+            HttpResponseMessage respuesta;
 
-            if (respuesta.IsSuccessStatusCode)
+            if (esEdicion)
             {
-                mensaje = "Usuario creado exitosamente.";
-                mostrarFormulario = false;
-                await CargarUsuarios();
+                var dtoEdit = new UsuarioEditDto { NombreCompleto = usuarioActual.NombreCompleto, Email = usuarioActual.Email, Telefono = usuarioActual.Telefono, Rol = usuarioActual.Rol };
+                respuesta = await Http.PutAsJsonAsync($"api/Usuarios/{idEdicion}", dtoEdit);
             }
             else
             {
-                var errorMsg = await respuesta.Content.ReadAsStringAsync();
-                mensaje = $"Error: {errorMsg}";
+                if (string.IsNullOrWhiteSpace(usuarioActual.Password)) { MostrarMensaje("La contraseña es obligatoria.", true); procesando = false; return; }
+                respuesta = await Http.PostAsJsonAsync("api/Usuarios", usuarioActual);
             }
+
+            if (respuesta.IsSuccessStatusCode)
+            {
+                MostrarMensaje(esEdicion ? "Perfil actualizado correctamente." : "Usuario creado exitosamente.");
+                mostrarFormulario = false;
+                await CargarUsuarios();
+            }
+            else { MostrarMensaje($"Error: {await respuesta.Content.ReadAsStringAsync()}", true); }
         }
-        catch (Exception ex)
+        catch (Exception ex) { MostrarMensaje($"Error crítico: {ex.Message}", true); }
+        finally { procesando = false; }
+    }
+
+    private async Task CambiarPassword()
+    {
+        procesando = true;
+        try
         {
-            mensaje = $"Error de conexión: {ex.Message}";
+            var respuesta = await Http.PutAsJsonAsync($"api/Usuarios/{idUsuarioPassword}/password", new CambiarPasswordDto { NuevaPassword = nuevaPassword });
+            if (respuesta.IsSuccessStatusCode)
+            {
+                MostrarMensaje("Contraseña cambiada exitosamente.");
+                mostrarModalPassword = false;
+            }
+            else { MostrarMensaje("Error al cambiar la contraseña. Asegúrate de que cumpla con los requisitos del sistema.", true); }
+        }
+        catch (Exception ex) { MostrarMensaje("Error de conexión.", true); }
+        finally { procesando = false; }
+    }
+
+    private async Task EliminarUsuario(string id, string nombre)
+    {
+        if (await JS.InvokeAsync<bool>("confirm", $"¿Estás completamente seguro de dar de baja a {nombre}? Su cuenta quedará inactiva y ya no podrá acceder al sistema."))
+        {
+            var respuesta = await Http.DeleteAsync($"api/Usuarios/{id}");
+            if (respuesta.IsSuccessStatusCode)
+            {
+                MostrarMensaje("Usuario dado de baja correctamente.");
+                await CargarUsuarios();
+            }
+            else { MostrarMensaje("No se pudo inactivar el usuario.", true); }
         }
     }
 }

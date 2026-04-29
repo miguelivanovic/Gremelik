@@ -1,7 +1,7 @@
 ﻿@page "/configuracion/planteles"
 @using Gremelik.core.Entities
 @using Microsoft.AspNetCore.Authorization
-@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin")]
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin, Coordinador")]
 @inject HttpClient Http
 
 <div class="d-flex justify-content-between align-items-center mb-4">
@@ -45,15 +45,17 @@ else
 
                         <div class="row text-secondary small">
                             <div class="col-6">
-                                <strong>CCT:</strong> @p.CCT
+                                <strong>CCT:</strong> @(string.IsNullOrEmpty(p.CCT) ? "N/A" : p.CCT)<br />
+                                <strong class="text-primary">Razón Social:</strong> @(string.IsNullOrEmpty(p.RazonSocial) ? "N/A" : p.RazonSocial)
                             </div>
                             <div class="col-6">
-                                <strong>RFC:</strong> @p.RFC
+                                <strong class="text-primary">RFC:</strong> @(string.IsNullOrEmpty(p.RFC) ? "N/A" : p.RFC)<br />
+                                <strong class="text-primary">Régimen:</strong> @(string.IsNullOrEmpty(p.RegimenFiscal) ? "N/A" : p.RegimenFiscal) | <strong>CP Fiscal:</strong> @p.CodigoPostalFiscal
                             </div>
                         </div>
                     </div>
                     <div class="card-footer bg-white text-end border-0">
-                        <button class="btn btn-sm btn-outline-primary">Editar</button>
+                        <button class="btn btn-sm btn-outline-primary" @onclick="() => Editar(p)">Editar</button>
                         <button class="btn btn-sm btn-outline-danger" @onclick="() => Eliminar(p.Id)">Eliminar</button>
                     </div>
                 </div>
@@ -97,11 +99,27 @@ else
                             <div class="col-md-6"><label>Código Postal</label><InputText class="form-control" @bind-Value="nuevoPlantel.CodigoPostal" /></div>
                         </div>
 
-                        <h6 class="text-primary mt-4 border-bottom pb-2">🏛️ Datos Oficiales</h6>
+                        <h6 class="text-primary mt-4 border-bottom pb-2">🏛️ Datos Oficiales y Fiscales (CFDI 4.0)</h6>
                         <div class="row mb-3">
-                            <div class="col-md-4"><label>CCT (SEP)</label><InputText class="form-control" @bind-Value="nuevoPlantel.CCT" /></div>
-                            <div class="col-md-4"><label>RFC (Fiscal)</label><InputText class="form-control" @bind-Value="nuevoPlantel.RFC" /></div>
-                            <div class="col-md-4"><label>Razón Social</label><InputText class="form-control" @bind-Value="nuevoPlantel.RazonSocial" /></div>
+                            <div class="col-md-3"><label>CCT (SEP)</label><InputText class="form-control" @bind-Value="nuevoPlantel.CCT" /></div>
+                            <div class="col-md-3"><label>RFC (Fiscal)</label><InputText class="form-control" @bind-Value="nuevoPlantel.RFC" /></div>
+                            <div class="col-md-6"><label>Razón Social</label><InputText class="form-control" @bind-Value="nuevoPlantel.RazonSocial" /></div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label>Código Postal Fiscal</label>
+                                <InputText class="form-control" @bind-Value="nuevoPlantel.CodigoPostalFiscal" />
+                            </div>
+                            <div class="col-md-8">
+                                <label>Régimen Fiscal</label>
+                                <InputSelect class="form-select" @bind-Value="nuevoPlantel.RegimenFiscal">
+                                    <option value="">-- Selecciona un Régimen --</option>
+                                    <option value="601">601 - General de Ley Personas Morales</option>
+                                    <option value="603">603 - Personas Morales con Fines no Lucrativos</option>
+                                    <option value="612">612 - Personas Físicas con Actividades Empresariales y Profesionales</option>
+                                    <option value="626">626 - Régimen Simplificado de Confianza (RESICO)</option>
+                                </InputSelect>
+                            </div>
                         </div>
 
                         <div class="d-flex justify-content-end gap-2 mt-4">
@@ -136,9 +154,55 @@ else
         mostrarFormulario = true;
     }
 
+    private async Task Eliminar(Guid id)
+    {
+        // Cambiamos el texto para reflejar el borrado lógico
+        if (await JSRuntime.InvokeAsync<bool>("confirm", "¿Estás seguro de dar de baja este plantel? Sus datos históricos se conservarán."))
+        {
+            await Http.DeleteAsync($"api/Planteles/{id}");
+            await CargarPlanteles();
+        }
+    }
+
+    private void Editar(Plantel p)
+    {
+        // Clonamos los datos para que si el usuario cancela, no se modifique la tarjeta visualmente
+        nuevoPlantel = new Plantel
+            {
+                Id = p.Id,
+                Nombre = p.Nombre,
+                Estado = p.Estado,
+                Calle = p.Calle,
+                Numero = p.Numero,
+                Colonia = p.Colonia,
+                Municipio = p.Municipio,
+                CodigoPostal = p.CodigoPostal,
+                CCT = p.CCT,
+                RFC = p.RFC,
+                RazonSocial = p.RazonSocial,
+                CodigoPostalFiscal = p.CodigoPostalFiscal,
+                RegimenFiscal = p.RegimenFiscal,
+                EsMatriz = p.EsMatriz,
+                Activo = p.Activo,
+                EscuelaId = p.EscuelaId
+            };
+        mostrarFormulario = true;
+    }
+
     private async Task GuardarPlantel()
     {
-        var response = await Http.PostAsJsonAsync("api/Planteles", nuevoPlantel);
+        HttpResponseMessage response;
+
+        // Si el ID está vacío, es uno nuevo (POST). Si ya tiene ID, es una actualización (PUT)
+        if (nuevoPlantel.Id == Guid.Empty)
+        {
+            response = await Http.PostAsJsonAsync("api/Planteles", nuevoPlantel);
+        }
+        else
+        {
+            response = await Http.PutAsJsonAsync($"api/Planteles/{nuevoPlantel.Id}", nuevoPlantel);
+        }
+
         if (response.IsSuccessStatusCode)
         {
             mostrarFormulario = false;
@@ -146,17 +210,7 @@ else
         }
         else
         {
-            // Manejar error
-            Console.WriteLine("Error al guardar");
-        }
-    }
-
-    private async Task Eliminar(Guid id)
-    {
-        if (await JSRuntime.InvokeAsync<bool>("confirm", "¿Estás seguro de eliminar este plantel?"))
-        {
-            await Http.DeleteAsync($"api/Planteles/{id}");
-            await CargarPlanteles();
+            Console.WriteLine("Error al guardar el plantel");
         }
     }
 

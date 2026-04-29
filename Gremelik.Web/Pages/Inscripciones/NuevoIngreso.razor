@@ -1,7 +1,7 @@
 ﻿@page "/inscripciones/nuevo-ingreso"
 @using Gremelik.core.Entities
 @using Microsoft.AspNetCore.Authorization
-@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin")]
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin, Coordinador, Cajero")]
 @inject HttpClient Http
 @inject IJSRuntime JS
 @inject NavigationManager NavManager
@@ -13,7 +13,7 @@
 
     @if (enviando)
     {
-        <div class="alert alert-info text-center">
+        <div class="alert alert-info text-center shadow-sm">
             <div class="spinner-border spinner-border-sm me-2"></div> Procesando...
         </div>
     }
@@ -23,51 +23,59 @@
 
         <div class="row">
             <div class="col-lg-8">
-                <div class="card mb-4 shadow-sm">
-                    <div class="card-header bg-primary text-white">
+                <div class="card mb-4 shadow-sm border-primary">
+                    <div class="card-header bg-primary text-white fw-bold">
                         <i class="bi bi-person-circle"></i> Datos del Alumno
                     </div>
                     <div class="card-body">
                         <div class="row g-3">
                             <div class="col-md-4">
-                                <label>Nombre *</label>
+                                <label class="fw-bold small text-muted">Nombre *</label>
                                 <InputText class="form-control" @bind-Value="alumnoModel.Nombre" />
                                 <ValidationMessage For="@(() => alumnoModel.Nombre)" />
                             </div>
                             <div class="col-md-4">
-                                <label>Primer Apellido *</label>
+                                <label class="fw-bold small text-muted">Primer Apellido *</label>
                                 <InputText class="form-control" @bind-Value="alumnoModel.PrimerApellido" />
                                 <ValidationMessage For="@(() => alumnoModel.PrimerApellido)" />
                             </div>
                             <div class="col-md-4">
-                                <label>Segundo Apellido</label>
+                                <label class="fw-bold small text-muted">Segundo Apellido</label>
                                 <InputText class="form-control" @bind-Value="alumnoModel.SegundoApellido" />
                             </div>
                             <div class="col-md-4">
-                                <label>CURP *</label>
+                                <label class="fw-bold small text-muted">CURP *</label>
                                 <InputText class="form-control" @bind-Value="alumnoModel.CURP" maxlength="18" style="text-transform:uppercase" />
                                 <ValidationMessage For="@(() => alumnoModel.CURP)" />
                             </div>
                             <div class="col-md-4">
-                                <label>NIA (Opcional)</label>
+                                <label class="fw-bold small text-muted">NIA (Opcional)</label>
                                 <InputText class="form-control" @bind-Value="alumnoModel.NIA" />
                             </div>
                             <div class="col-md-4">
-                                <label>Fecha Nacimiento</label>
+                                <label class="fw-bold small text-muted">Fecha Nacimiento</label>
                                 <InputDate class="form-control" @bind-Value="alumnoModel.FechaNacimiento" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="fw-bold small text-muted">Sexo *</label>
+                                <InputSelect class="form-select" @bind-Value="alumnoModel.Sexo">
+                                    <option value="M">Masculino</option>
+                                    <option value="F">Femenino</option>
+                                </InputSelect>
+                                <ValidationMessage For="@(() => alumnoModel.Sexo)" />
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <div class="card mb-4 shadow-sm">
-                    <div class="card-header bg-secondary text-white">
+                    <div class="card-header bg-secondary text-white fw-bold">
                         <i class="bi bi-diagram-3"></i> Asignación Académica
                     </div>
                     <div class="card-body">
                         <div class="row g-3">
                             <div class="col-md-12 mb-2">
-                                <label class="fw-bold">Ciclo Escolar a Inscribir:</label>
+                                <label class="fw-bold text-muted small">Ciclo Escolar a Inscribir:</label>
                                 <select class="form-select border-primary" value="@cicloSeleccionadoId" @onchange="CambiarCiclo">
                                     <option value="0">-- Cargando --</option>
                                     @if (ciclos != null)
@@ -81,7 +89,7 @@
                             </div>
 
                             <div class="col-md-4">
-                                <label>Plantel</label>
+                                <label class="fw-bold text-muted small">Plantel</label>
                                 <select class="form-select" @onchange="CargarNiveles">
                                     <option value="">-- Seleccionar --</option>
                                     @if (planteles != null)
@@ -94,7 +102,7 @@
                                 </select>
                             </div>
                             <div class="col-md-4">
-                                <label>Nivel</label>
+                                <label class="fw-bold text-muted small">Nivel</label>
                                 <select class="form-select" @onchange="CargarGrados" disabled="@(niveles == null)">
                                     <option value="">-- Seleccionar --</option>
                                     @if (niveles != null)
@@ -107,7 +115,7 @@
                                 </select>
                             </div>
                             <div class="col-md-4">
-                                <label>Grado</label>
+                                <label class="fw-bold text-muted small">Grado</label>
                                 <select class="form-select" @onchange="CargarGruposYCotizar" disabled="@(grados == null)">
                                     <option value="">-- Seleccionar --</option>
                                     @if (grados != null)
@@ -121,10 +129,10 @@
                             </div>
 
                             <div class="col-md-12">
-                                <label class="fw-bold">Grupo:</label>
+                                <label class="fw-bold text-muted small">Grupo:</label>
                                 @if (esCicloFuturo)
                                 {
-                                    <div class="alert alert-warning py-2">
+                                    <div class="alert alert-warning py-2 mb-2 small">
                                         <i class="bi bi-info-circle"></i> Estás pre-inscribiendo a un ciclo futuro.
                                         La asignación de grupo es <strong>opcional</strong>.
                                     </div>
@@ -145,11 +153,11 @@
                                 }
                                 else if (gradoSeleccionadoId != 0 && !esCicloFuturo)
                                 {
-                                    <span class="text-danger ms-2">No hay grupos abiertos en este grado para el ciclo actual.</span>
+                                    <span class="text-danger ms-2 small">No hay grupos abiertos en este grado para el ciclo actual.</span>
                                 }
                                 else if (gradoSeleccionadoId != 0 && esCicloFuturo)
                                 {
-                                    <span class="text-muted ms-2">Aún no hay grupos creados para el futuro. Se inscribirá sin grupo.</span>
+                                    <span class="text-muted ms-2 small">Aún no hay grupos creados para el futuro. Se inscribirá sin grupo.</span>
                                 }
                             </div>
                         </div>
@@ -159,7 +167,7 @@
 
             <div class="col-lg-4">
                 <div class="card shadow border-success h-100">
-                    <div class="card-header bg-success text-white">
+                    <div class="card-header bg-success text-white fw-bold">
                         <i class="bi bi-cash-coin"></i> Caja / Cobro
                     </div>
                     <div class="card-body bg-light">
@@ -170,7 +178,7 @@
                         else
                         {
                             <div class="mb-3">
-                                <label class="text-muted small">Costo Base:</label>
+                                <label class="text-muted small fw-bold">Costo Base:</label>
                                 <div class="input-group">
                                     <span class="input-group-text">$</span>
                                     <input type="number" class="form-control fw-bold" @bind="cotizacion.MontoBase" @bind:after="RecalcularManual" />
@@ -179,25 +187,25 @@
                             </div>
 
                             <div class="mb-3">
-                                <label class="text-muted small">Descuento:</label>
+                                <label class="text-muted small fw-bold">Descuento:</label>
                                 <div class="input-group">
                                     <span class="input-group-text text-danger">-$</span>
                                     <input type="number" class="form-control text-danger" @bind="cotizacion.MontoDescuento" readonly />
                                 </div>
                                 @if (!string.IsNullOrEmpty(cotizacion.NombreReglaAplicada))
                                 {
-                                    <span class="badge bg-info text-dark">@cotizacion.NombreReglaAplicada</span>
+                                    <span class="badge bg-info text-dark mt-1">@cotizacion.NombreReglaAplicada</span>
                                 }
                             </div>
 
                             <hr />
 
-                            <div class="mb-3">
-                                <label class="fw-bold">TOTAL A PAGAR:</label>
-                                <h2 class="text-success text-end">$@cotizacion.MontoFinal.ToString("N2")</h2>
+                            <div class="mb-3 text-center">
+                                <label class="fw-bold text-muted">TOTAL A PAGAR:</label>
+                                <h2 class="text-success fw-bold display-6">$@cotizacion.MontoFinal.ToString("N2")</h2>
                             </div>
 
-                            <button type="submit" class="btn btn-success w-100 py-3 fw-bold"
+                            <button type="submit" class="btn btn-success w-100 py-3 fw-bold shadow-sm"
                                     disabled="@(!PuedeGuardar)">
                                 <i class="bi bi-check-circle-fill"></i> CONFIRMAR INSCRIPCIÓN
                             </button>
@@ -217,7 +225,8 @@
             Matricula = "PENDIENTE",
             CURP = "",
             NIA = "",
-            Usuario = ""
+            Usuario = "",
+            Sexo = "M" // Inicializado con Masculino por defecto
         };
 
     public class CotizacionDto
@@ -241,22 +250,21 @@
     int cicloSeleccionadoId = 0;
     int cicloActivoId = 0;
     int gradoSeleccionadoId = 0;
-    int grupoSeleccionadoId = 0; // Puede ser 0 si es pre-inscripción
+    int grupoSeleccionadoId = 0;
 
     bool enviando = false;
     bool cargandoCotizacion = false;
     bool esCicloFuturo = false;
 
-    // Propiedad para habilitar/deshabilitar botón
     bool PuedeGuardar =>
-        gradoSeleccionadoId != 0 && // Debe haber seleccionado grado
-        (grupoSeleccionadoId != 0 || esCicloFuturo); // Debe tener grupo O ser futuro
+        gradoSeleccionadoId != 0 &&
+        (grupoSeleccionadoId != 0 || esCicloFuturo);
 
     public class EnvioInscripcion
     {
         public Alumno? Alumno { get; set; }
-        public int? GrupoId { get; set; } // Nullable
-        public int GradoId { get; set; }  // Nuevo
+        public int? GrupoId { get; set; }
+        public int GradoId { get; set; }
         public int CicloId { get; set; }
         public decimal MontoBase { get; set; }
         public decimal MontoDescuento { get; set; }
@@ -268,22 +276,20 @@
     protected override async Task OnInitializedAsync()
     {
         planteles = await Http.GetFromJsonAsync<List<Plantel>>("api/Planteles");
-
         var todosCiclos = await Http.GetFromJsonAsync<List<CicloEscolar>>("api/Ciclos");
 
-        // FILTRO DE ORO: Actual o Próximo
         if (todosCiclos != null)
         {
             ciclos = todosCiclos
                 .Where(c => c.Estatus == EstatusCiclo.Actual || c.Estatus == EstatusCiclo.Proximo)
-                .OrderBy(c => c.Estatus) // Primero Actual, luego Próximo
+                .OrderBy(c => c.Estatus)
                 .ToList();
 
             var activo = ciclos.FirstOrDefault(c => c.Estatus == EstatusCiclo.Actual);
             if (activo != null)
             {
                 cicloActivoId = activo.Id;
-                cicloSeleccionadoId = activo.Id; // Por defecto el actual
+                cicloSeleccionadoId = activo.Id;
             }
         }
     }
@@ -293,18 +299,13 @@
         if (int.TryParse(e.Value?.ToString(), out int id))
         {
             cicloSeleccionadoId = id;
-
-            // Lógica de ciclo futuro
             esCicloFuturo = (cicloSeleccionadoId != cicloActivoId);
-
-            // Limpiamos la cotización anterior para que no muestre datos viejos
             cotizacion = new();
 
-            // Si ya había un grado seleccionado, intentamos recargar grupos y precio
             if (gradoSeleccionadoId != 0)
             {
-                await CargarGrupos(); // Esperamos a que cargue grupos
-                await Cotizar(gradoSeleccionadoId); // Esperamos a que cotice
+                await CargarGrupos();
+                await Cotizar(gradoSeleccionadoId);
             }
         }
     }
@@ -328,16 +329,15 @@
         if (int.TryParse(e.Value?.ToString(), out int id))
         {
             gradoSeleccionadoId = id;
-            await CargarGrupos(); // Carga grupos del ciclo seleccionado
-            await Cotizar(id);    // Cotiza para el ciclo seleccionado
+            await CargarGrupos();
+            await Cotizar(id);
         }
     }
 
     private async Task CargarGrupos()
     {
-        // Buscamos grupos en el ciclo SELECCIONADO (no solo el activo)
         grupos = await Http.GetFromJsonAsync<List<Grupo>>($"api/Grupos/grado/{gradoSeleccionadoId}/ciclo/{cicloSeleccionadoId}");
-        grupoSeleccionadoId = 0; // Reiniciar selección
+        grupoSeleccionadoId = 0;
     }
 
     private void SeleccionarGrupo(int id)
@@ -347,25 +347,20 @@
 
     private async Task Cotizar(int gradoId)
     {
-        // 1. Encendemos el spinner
         cargandoCotizacion = true;
-
         try
         {
-            // Validamos que tengamos datos mínimos
             if (cicloSeleccionadoId == 0 || gradoId == 0)
             {
                 cotizacion = new();
-                return; // El finally se ejecutará y apagará el spinner
+                return;
             }
 
-            // 2. Llamada al API
             var url = $"api/Inscripciones/cotizar?cicloId={cicloSeleccionadoId}&gradoId={gradoId}&esNuevoIngreso=true";
             cotizacion = await Http.GetFromJsonAsync<CotizacionDto>(url) ?? new();
         }
         catch (Exception ex)
         {
-            // Si falla, mostramos precio en 0 y el error en consola o concepto
             cotizacion = new()
                 {
                     MontoBase = 0,
@@ -376,8 +371,6 @@
         }
         finally
         {
-            // 3. APAGADO OBLIGATORIO DEL SPINNER
-            // Esto garantiza que la caja nunca se quede "pensando"
             cargandoCotizacion = false;
         }
     }
@@ -394,8 +387,8 @@
         var envio = new EnvioInscripcion
             {
                 Alumno = alumnoModel,
-                GrupoId = grupoSeleccionadoId == 0 ? null : grupoSeleccionadoId, // Null si es 0
-                GradoId = gradoSeleccionadoId, // Necesario para pre-inscripción
+                GrupoId = grupoSeleccionadoId == 0 ? null : grupoSeleccionadoId,
+                GradoId = gradoSeleccionadoId,
                 CicloId = cicloSeleccionadoId,
                 MontoBase = cotizacion.MontoBase,
                 MontoDescuento = cotizacion.MontoDescuento,

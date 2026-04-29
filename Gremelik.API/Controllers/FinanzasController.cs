@@ -24,15 +24,7 @@ namespace Gremelik.API.Controllers
 
         // --- CONCEPTOS (AHORA INCLUYEN PRECIO Y JERARQUÍA DIRECTAMENTE) ---
 
-        [HttpGet("conceptos/{cicloId}")]
-        public async Task<ActionResult<IEnumerable<ConceptoPago>>> GetConceptos(int cicloId)
-        {
-            return await _context.ConceptosPago
-                .Where(c => c.CicloEscolarId == cicloId)
-                .OrderBy(c => c.Nombre)
-                .ThenBy(c => c.Monto) // Usamos Monto, no MontoDefault
-                .ToListAsync();
-        }
+        
 
         [HttpPost("conceptos")]
         public async Task<ActionResult<ConceptoPago>> PostConcepto(ConceptoPago concepto)
@@ -95,32 +87,57 @@ namespace Gremelik.API.Controllers
             return NoContent();
         }
 
+        // --- CONCEPTOS ---
+        [HttpGet("conceptos/{cicloId}")]
+        public async Task<ActionResult<IEnumerable<ConceptoPago>>> GetConceptos(int cicloId)
+        {
+            return await _context.ConceptosPago
+                .Where(c => c.CicloEscolarId == cicloId && c.Activo) // <-- SOLO ACTIVOS
+                .OrderBy(c => c.Nombre)
+                .ThenBy(c => c.Monto)
+                .ToListAsync();
+        }
+
         [HttpDelete("conceptos/{id}")]
         public async Task<IActionResult> DeleteConcepto(Guid id)
         {
             var concepto = await _context.ConceptosPago.FindAsync(id);
             if (concepto == null) return NotFound();
 
-            // Validar si está en uso en Planes
-            bool enUso = await _context.PlanesPago.AnyAsync(p => p.ConceptoPagoId == id);
-            if (enUso) return BadRequest("No puedes borrar este concepto porque es base de un Plan de Pagos.");
+            // Validar si está en uso en Planes (esta regla tuya es muy buena, la dejamos)
+            bool enUso = await _context.PlanesPago.AnyAsync(p => p.ConceptoPagoId == id && p.Activo);
+            if (enUso) return BadRequest("No puedes dar de baja este concepto porque es base de un Plan de Pagos activo.");
 
-            _context.ConceptosPago.Remove(concepto);
+            // REGLA DE ORO: SOFT DELETE
+            concepto.Activo = false;
             await _context.SaveChangesAsync();
             return NoContent();
         }
 
         // --- PLANES DE PAGO ---
-
         [HttpGet("planes/{cicloId}")]
         public async Task<ActionResult<IEnumerable<PlanPago>>> GetPlanes(int cicloId)
         {
             return await _context.PlanesPago
                 .Include(p => p.ConceptoRelacionado)
-                .Where(p => p.CicloEscolarId == cicloId)
+                .Where(p => p.CicloEscolarId == cicloId && p.Activo) // <-- SOLO ACTIVOS
                 .OrderBy(p => p.Nombre)
                 .ToListAsync();
         }
+
+        [HttpDelete("planes/{id}")]
+        public async Task<IActionResult> DeletePlan(Guid id)
+        {
+            var plan = await _context.PlanesPago.FindAsync(id);
+            if (plan == null) return NotFound();
+
+            // REGLA DE ORO: SOFT DELETE
+            plan.Activo = false;
+            await _context.SaveChangesAsync();
+            return NoContent();
+        }
+
+
 
         [HttpPost("planes")]
         public async Task<ActionResult<PlanPago>> PostPlan(PlanPago plan)
@@ -146,14 +163,6 @@ namespace Gremelik.API.Controllers
             return NoContent();
         }
 
-        [HttpDelete("planes/{id}")]
-        public async Task<IActionResult> DeletePlan(Guid id)
-        {
-            var plan = await _context.PlanesPago.FindAsync(id);
-            if (plan == null) return NotFound();
-            _context.PlanesPago.Remove(plan);
-            await _context.SaveChangesAsync();
-            return NoContent();
-        }
+        
     }
 }

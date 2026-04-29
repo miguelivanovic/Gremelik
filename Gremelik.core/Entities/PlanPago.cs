@@ -12,6 +12,9 @@ namespace Gremelik.core.Entities
         public int NumeroPagos { get; set; } = 10;
         public int DiaLimitePago { get; set; } = 10;
 
+        // --- NUEVO CAMPO: Mes en el que inicia el cobro (1 = Enero, 12 = Diciembre) ---
+        public int MesInicioCobro { get; set; } = 9; // Default: Septiembre
+
         [StringLength(50)]
         public string MesesDobleCobro { get; set; } = "";
 
@@ -27,7 +30,6 @@ namespace Gremelik.core.Entities
         [ForeignKey("ConceptoPagoId")]
         public ConceptoPago? ConceptoRelacionado { get; set; }
 
-        // --- AGREGADO: EL CAMPO QUE FALTABA ---
         public Guid EscuelaId { get; set; }
     }
 }

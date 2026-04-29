@@ -1,0 +1,266 @@
+﻿@page "/academico/asistencia"
+@using Gremelik.core.Entities
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin, Coordinador, Maestro")]
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<div class="container-fluid pb-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3><i class="bi bi-calendar-check text-primary"></i> Pase de Lista</h3>
+    </div>
+
+    <div class="card shadow-sm border-0 bg-light mb-4">
+        <div class="card-body">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-3">
+                    <label class="fw-bold text-muted small">Fecha de Asistencia:</label>
+                    <input type="date" class="form-control border-primary fw-bold" 
+                           max="@DateTime.Today.ToString("yyyy-MM-dd")" 
+                           @bind="fechaSeleccionada" @bind:after="RecargarLista" />
+                </div>
+                <div class="col-md-5">
+                    <label class="fw-bold text-muted small">Selecciona tu Clase:</label>
+                    <select class="form-select border-primary" @onchange="SeleccionarClase">
+                        <option value="">-- Mis Clases --</option>
+                        @if (misClases != null)
+                        {
+                            @foreach (var c in misClases)
+                            {
+                                <option value="@c.GrupoId|@c.MateriaId">@c.MateriaNombre - Grupo @c.GrupoNombre</option>
+                            }
+                        }
+                    </select>
+                </div>
+                <div class="col-md-4 text-end">
+                    @if (listaAlumnos != null && listaAlumnos.Any())
+                    {
+                        <div class="form-check text-start d-inline-block bg-white p-2 rounded border border-warning shadow-sm">
+                            <input class="form-check-input ms-1" type="checkbox" id="checkReplicar" @bind="replicarMaterias">
+                            <label class="form-check-label fw-bold text-dark ms-2 pe-2" for="checkReplicar">
+                                Replicar en mis otras materias de hoy con este grupo
+                            </label>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (cargando)
+    {
+        <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+    }
+    else if (listaAlumnos != null)
+    {
+        if (!listaAlumnos.Any())
+        {
+            <div class="alert alert-warning text-center"><i class="bi bi-info-circle"></i> No hay alumnos inscritos en este grupo.</div>
+        }
+        else
+        {
+            @if (yaSePasoLista)
+            {
+                <div class="alert alert-warning shadow-sm border-warning d-flex align-items-center mb-3">
+                    <i class="bi bi-exclamation-triangle-fill fs-4 me-3"></i>
+                    <div>
+                        <strong>¡Atención!</strong> Ya se ha registrado asistencia para esta clase el día de hoy.
+                        Cualquier cambio que realices ahora sobrescribirá el registro anterior.
+                    </div>
+                </div>
+            }
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                    <span class="fw-bold">Alumnos Inscritos (@listaAlumnos.Count)</span>
+                    <button class="btn btn-sm btn-success fw-bold" @onclick="MarcarTodosPresentes">
+                        <i class="bi bi-check-all"></i> Todos Presentes
+                    </button>
+                </div>
+                <table class="table table-hover align-middle mb-0">
+                    <tbody>
+                        @foreach (var alumno in listaAlumnos)
+                        {
+                            <tr>
+                                <td class="ps-4">
+                                    <div class="fw-bold text-dark fs-6">@alumno.NombreCompleto</div>
+                                    <small class="text-muted">@alumno.Matricula</small>
+                                </td>
+                                <td class="text-end pe-4">
+                                    <div class="btn-group shadow-sm" role="group">
+                                        <button type="button" class="btn btn-sm @(alumno.Estatus == 1 ? "btn-success" : "btn-outline-success bg-white") fw-bold"
+                                                @onclick="() => alumno.Estatus = 1" style="width: 45px;" title="Presente">
+                                            P
+                                        </button>
+
+                                        <button type="button" class="btn btn-sm @(alumno.Estatus == 2 ? "btn-danger" : "btn-outline-danger bg-white") fw-bold"
+                                                @onclick="() => alumno.Estatus = 2" style="width: 45px;" title="Falta">
+                                            F
+                                        </button>
+
+                                        <button type="button" class="btn btn-sm @(alumno.Estatus == 3 ? "btn-warning text-dark" : "btn-outline-warning bg-white text-dark") fw-bold"
+                                                @onclick="() => alumno.Estatus = 3" style="width: 45px;" title="Retardo">
+                                            R
+                                        </button>
+
+                                        <button type="button" class="btn btn-sm @(alumno.Estatus == 4 ? "btn-info text-dark" : "btn-outline-info bg-white text-dark") fw-bold"
+                                                @onclick="() => alumno.Estatus = 4" style="width: 45px;" title="Justificado">
+                                            J
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                <div class="card-footer bg-light text-end p-3">
+                    <button class="btn btn-primary fw-bold px-4 py-2 shadow-sm" @onclick="GuardarAsistencia" disabled="@enviando">
+                        @if (enviando)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2"></span>
+                        }
+                        <i class="bi bi-save"></i> Guardar Asistencia
+                    </button>
+                </div>
+            </div>
+        }
+    }
+    else if (grupoSeleccionadoId == 0)
+    {
+        <div class="text-center text-muted mt-5 pt-5">
+            <i class="bi bi-arrow-up-circle fs-1"></i>
+            <h5 class="mt-3">Selecciona una clase arriba para comenzar</h5>
+        </div>
+    }
+</div>
+
+@code {
+    public class ClaseVista
+    {
+        public Guid AsignacionId { get; set; }
+        public Guid MateriaId { get; set; }
+        public string MateriaNombre { get; set; } = "";
+        public int GrupoId { get; set; }
+        public string GrupoNombre { get; set; } = "";
+    }
+
+    public class AlumnoAsistencia
+    {
+        public Guid AlumnoId { get; set; }
+        public string NombreCompleto { get; set; } = "";
+        public string Matricula { get; set; } = "";
+        public int Estatus { get; set; } = 1;
+    }
+
+    // Nueva clase para mapear la respuesta del backend
+    public class ResultadoListaDto
+    {
+        public bool YaSePasoLista { get; set; }
+        public List<AlumnoAsistencia> Alumnos { get; set; } = new();
+    }
+
+    int cicloActualId = 0;
+    DateTime fechaSeleccionada = DateTime.Today;
+    List<ClaseVista>? misClases;
+    List<AlumnoAsistencia>? listaAlumnos;
+
+    int grupoSeleccionadoId = 0;
+    Guid materiaSeleccionadaId = Guid.Empty;
+
+    bool replicarMaterias = true;
+    bool cargando = false;
+    bool enviando = false;
+    bool yaSePasoLista = false; // Bandera para la alerta
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Consumiendo ciclos con clase dinámica segura
+        var ciclos = await Http.GetFromJsonAsync<List<Gremelik.core.Entities.CicloEscolar>>("api/Ciclos");
+        var activo = ciclos?.FirstOrDefault(c => c.Estatus == Gremelik.core.Entities.EstatusCiclo.Actual);
+
+        if (activo != null)
+        {
+            cicloActualId = activo.Id;
+            misClases = await Http.GetFromJsonAsync<List<ClaseVista>>($"api/Asistencias/mis-clases/{cicloActualId}");
+        }
+    }
+
+    private async Task SeleccionarClase(ChangeEventArgs e)
+    {
+        var valor = e.Value?.ToString();
+        if (!string.IsNullOrEmpty(valor) && valor.Contains("|"))
+        {
+            var partes = valor.Split('|');
+            grupoSeleccionadoId = int.Parse(partes[0]);
+            materiaSeleccionadaId = Guid.Parse(partes[1]);
+
+            await RecargarLista();
+        }
+        else
+        {
+            grupoSeleccionadoId = 0;
+            materiaSeleccionadaId = Guid.Empty;
+            listaAlumnos = null;
+            yaSePasoLista = false;
+        }
+    }
+
+    private async Task RecargarLista()
+    {
+        if (grupoSeleccionadoId == 0 || materiaSeleccionadaId == Guid.Empty) return;
+
+        cargando = true;
+        string fechaStr = fechaSeleccionada.ToString("yyyy-MM-dd");
+
+        var resultado = await Http.GetFromJsonAsync<ResultadoListaDto>($"api/Asistencias/lista?grupoId={grupoSeleccionadoId}&materiaId={materiaSeleccionadaId}&fecha={fechaStr}");
+
+        if (resultado != null)
+        {
+            listaAlumnos = resultado.Alumnos;
+            yaSePasoLista = resultado.YaSePasoLista;
+        }
+
+        cargando = false;
+    }
+
+    private void MarcarTodosPresentes()
+    {
+        if (listaAlumnos == null) return;
+        foreach (var a in listaAlumnos) a.Estatus = 1;
+    }
+
+    private async Task GuardarAsistencia()
+    {
+        if (fechaSeleccionada.Date > DateTime.Today)
+        {
+            await JS.InvokeVoidAsync("alert", "No puedes registrar asistencia en una fecha futura.");
+            return;
+        }
+        if (listaAlumnos == null || !listaAlumnos.Any()) return;
+
+        enviando = true;
+
+        var dto = new
+        {
+            GrupoId = grupoSeleccionadoId,
+            MateriaId = materiaSeleccionadaId,
+            CicloId = cicloActualId,
+            Fecha = fechaSeleccionada,
+            ReplicarEnOtrasMaterias = replicarMaterias,
+            Alumnos = listaAlumnos.Select(a => new { a.AlumnoId, a.Estatus }).ToList()
+        };
+
+        var res = await Http.PostAsJsonAsync("api/Asistencias/guardar", dto);
+        enviando = false;
+
+        if (res.IsSuccessStatusCode)
+        {
+            await JS.InvokeVoidAsync("alert", "¡Asistencia guardada correctamente!");
+            await RecargarLista(); // Recargamos para que aparezca la alerta amarilla si no estaba
+        }
+        else
+        {
+            var msg = await res.Content.ReadAsStringAsync();
+            await JS.InvokeVoidAsync("alert", "Error al guardar: " + msg);
+        }
+    }
+}

@@ -22,16 +22,14 @@ namespace Gremelik.API.Controllers
             _tenantService = tenantService;
         }
 
-        // DTO PARA RECIBIR LA ORDEN DE GENERACIÓN
-        // 1. AGREGA ESTE CAMPO AL DTO
         public class GeneracionCargosDto
         {
             public Guid AlumnoId { get; set; }
             public int CicloId { get; set; }
-            public Guid PlanPagoId { get; set; }
+            public Guid? PlanPagoId { get; set; } // <--- AHORA ES OPCIONAL (?)
             public Guid? BecaId { get; set; }
             public List<Guid> ServiciosAdicionalesIds { get; set; } = new();
-            public List<Guid> ConceptosUnicosIds { get; set; } = new(); // <--- IMPORTANTE
+            public List<Guid> ConceptosUnicosIds { get; set; } = new();
             public DateTime? FechaInicioCobro { get; set; }
         }
 
@@ -39,19 +37,146 @@ namespace Gremelik.API.Controllers
         public async Task<IActionResult> GenerarCargos([FromBody] GeneracionCargosDto dto)
         {
             if (!_tenantService.TenantId.HasValue) return BadRequest("Escuela no identificada");
-
-            // 1. VARIABLES GLOBALES DEL MÉTODO (Aquí definimos todo para que no marque error abajo)
             var escuelaId = _tenantService.TenantId.Value;
             var usuario = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "Sistema";
 
             var alumno = await _context.Alumnos.FindAsync(dto.AlumnoId);
             var ciclo = await _context.CiclosEscolares.FindAsync(dto.CicloId);
-            var plan = await _context.PlanesPago.Include(p => p.ConceptoRelacionado).FirstOrDefaultAsync(p => p.Id == dto.PlanPagoId);
 
-            if (alumno == null || ciclo == null || plan == null) return BadRequest("Datos inválidos.");
+            // Buscamos el plan SOLO si mandaron un ID válido
+            PlanPago? plan = null;
+            if (dto.PlanPagoId.HasValue && dto.PlanPagoId.Value != Guid.Empty)
+            {
+                plan = await _context.PlanesPago.Include(p => p.ConceptoRelacionado).FirstOrDefaultAsync(p => p.Id == dto.PlanPagoId);
+            }
+
+            if (alumno == null || ciclo == null) return BadRequest("Datos inválidos.");
+
+            // Validamos que estén intentando generar ALGO
+            if (plan == null && !dto.ConceptosUnicosIds.Any() && !dto.ServiciosAdicionalesIds.Any())
+            {
+                return BadRequest("Debes seleccionar un plan de colegiaturas o al menos un cargo único/servicio.");
+            }
+
+            // Validar que si piden servicios mensuales (transporte), ahuevo tengan un plan para saber a cuántos meses
+            if (dto.ServiciosAdicionalesIds.Any() && plan == null)
+            {
+                return BadRequest("Para generar servicios mensuales necesitas asignar un Plan de Colegiaturas primero, ya que de ahí se calcula el número de meses.");
+            }
+
+            // 1.5 VALIDACIÓN DE INSCRIPCIÓN EN EL CICLO (La regla que agregamos antes se queda igual)
+            var estaInscrito = await _context.Inscripciones.AnyAsync(i => i.AlumnoId == dto.AlumnoId && i.CicloEscolarId == dto.CicloId && i.Activo);
+            if (!estaInscrito) return BadRequest("El alumno no está inscrito en este ciclo.");
+
+            // ---------------------------------------------------------
+            // 2. VALIDACIÓN DE INSCRIPCIÓN PAGADA
+            // ---------------------------------------------------------
+            var inscripcionPagada = await _context.CuentasPorCobrar
+                .AnyAsync(c => c.AlumnoId == dto.AlumnoId
+                            && c.CicloEscolarId == dto.CicloId
+                            && c.ConceptoNombre.ToLower().Contains("inscripci")
+                            && c.Estado == "PAGADO");
+
+            if (!inscripcionPagada)
+            {
+                return BadRequest("El alumno debe tener la Inscripción pagada para este ciclo antes de generar colegiaturas.");
+            }
+
 
             Beca? beca = null;
-            if (dto.BecaId.HasValue) beca = await _context.Becas.FindAsync(dto.BecaId);
+            decimal descuentoMensual = 0;
+
+            if (dto.BecaId.HasValue)
+            {
+                beca = await _context.Becas.FindAsync(dto.BecaId);
+
+                // CORRECCIÓN: Validamos que plan NO sea nulo antes de buscar sus propiedades
+                if (beca != null && plan != null && plan.ConceptoRelacionado != null && plan.ConceptoRelacionado.AplicaBeca && beca.AplicaEnColegiatura)
+                {
+                    // ---------------------------------------------------------
+                    // 3. VALIDAR REGLAS DE BECA (HERMANOS)
+                    // ---------------------------------------------------------
+                    if (beca.ReglaHermano != TipoReglaBeca.Ninguna)
+                    {
+                        // 3.1 Obtener todos los hermanos a través de los tutores
+                        var tutoresAlumnoIds = await _context.Set<RelacionAlumnoTutor>()
+                            .Where(r => r.AlumnoId == dto.AlumnoId)
+                            .Select(r => r.TutorId)
+                            .ToListAsync();
+
+                        if (!tutoresAlumnoIds.Any())
+                            return BadRequest("No se puede aplicar esta beca: El alumno no tiene tutores asignados.");
+
+                        // Buscar todos los alumnos que comparten esos tutores
+                        var hermanosIds = await _context.Set<RelacionAlumnoTutor>()
+                            .Where(r => tutoresAlumnoIds.Contains(r.TutorId))
+                            .Select(r => r.AlumnoId)
+                            .Distinct()
+                            .ToListAsync();
+
+                        // Si solo está él, no tiene hermanos
+                        if (hermanosIds.Count <= 1)
+                            return BadRequest("No se puede aplicar esta beca: El alumno no tiene hermanos registrados en la institución.");
+
+                        // Traer la información completa de los hermanos (incluido el actual)
+                        var todosHermanos = await _context.Alumnos
+                            .Where(a => hermanosIds.Contains(a.Id) && a.Estatus == EstatusAlumno.Activo)
+                            .ToListAsync();
+
+                        // Evaluar la regla seleccionada
+                        bool aplicaBeca = false;
+
+                        if (beca.ReglaHermano == TipoReglaBeca.TodosLosHermanos)
+                        {
+                            aplicaBeca = true; // Ya sabemos que son más de 1
+                        }
+                        else if (beca.ReglaHermano == TipoReglaBeca.HermanoMayor)
+                        {
+                            var hermanoMayor = todosHermanos.OrderBy(h => h.FechaNacimiento).First();
+                            if (hermanoMayor.Id == dto.AlumnoId) aplicaBeca = true;
+                            else return BadRequest($"Esta beca solo aplica al Hermano Mayor (Nacido el {hermanoMayor.FechaNacimiento:d}).");
+                        }
+                        else if (beca.ReglaHermano == TipoReglaBeca.HermanoMenor)
+                        {
+                            var hermanoMenor = todosHermanos.OrderByDescending(h => h.FechaNacimiento).First();
+                            if (hermanoMenor.Id == dto.AlumnoId) aplicaBeca = true;
+                            else return BadRequest($"Esta beca solo aplica al Hermano Menor (Nacido el {hermanoMenor.FechaNacimiento:d}).");
+                        }
+                        else if (beca.ReglaHermano == TipoReglaBeca.ColegiaturaMasCara || beca.ReglaHermano == TipoReglaBeca.ColegiaturaMasBarata)
+                        {
+                            var inscripcionesHermanos = await _context.Inscripciones
+                                .Include(i => i.Grado)
+                                .Where(i => hermanosIds.Contains(i.AlumnoId) && i.CicloEscolarId == dto.CicloId)
+                                .ToListAsync();
+
+                            if (beca.ReglaHermano == TipoReglaBeca.ColegiaturaMasCara)
+                            {
+                                var inscripcionMasCara = inscripcionesHermanos.OrderByDescending(i => i.MontoFinal).FirstOrDefault();
+                                if (inscripcionMasCara != null && inscripcionMasCara.AlumnoId == dto.AlumnoId) aplicaBeca = true;
+                                else return BadRequest("Esta beca solo aplica al hermano con la colegiatura/plan más caro en este ciclo.");
+                            }
+                            else if (beca.ReglaHermano == TipoReglaBeca.ColegiaturaMasBarata)
+                            {
+                                var inscripcionMasBarata = inscripcionesHermanos.OrderBy(i => i.MontoFinal).FirstOrDefault();
+                                if (inscripcionMasBarata != null && inscripcionMasBarata.AlumnoId == dto.AlumnoId) aplicaBeca = true;
+                                else return BadRequest("Esta beca solo aplica al hermano con la colegiatura/plan más barato en este ciclo.");
+                            }
+                        }
+
+                        if (!aplicaBeca) return BadRequest("El alumno no cumple con la regla establecida para esta beca de hermanos.");
+                    }
+
+                    // ---------------------------------------------------------
+                    // 4. CALCULAR DESCUENTO SI PASÓ TODAS LAS REGLAS
+                    // ---------------------------------------------------------
+                    decimal montoAnual = plan.ConceptoRelacionado.Monto;
+                    decimal montoMensual = montoAnual / plan.NumeroPagos;
+
+                    if (beca.Porcentaje > 0) descuentoMensual = montoMensual * (beca.Porcentaje / 100);
+                    else descuentoMensual = beca.MontoFijo;
+                }
+            }
+
 
             // Fecha de corte
             DateTime fechaMinimaCobro = dto.FechaInicioCobro ?? ciclo.FechaInicio;
@@ -63,17 +188,11 @@ namespace Gremelik.API.Controllers
                 // ---------------------------------------------------------
                 // A) GENERAR COLEGIATURAS (PLAN DE PAGO)
                 // ---------------------------------------------------------
-                if (plan.ConceptoRelacionado != null)
+                // EL ARREGLO: Primero verificamos que 'plan' no sea nulo
+                if (plan != null && plan.ConceptoRelacionado != null)
                 {
                     decimal montoAnual = plan.ConceptoRelacionado.Monto;
                     decimal montoMensual = montoAnual / plan.NumeroPagos;
-
-                    decimal descuentoMensual = 0;
-                    if (beca != null && plan.ConceptoRelacionado.AplicaBeca && beca.AplicaEnColegiatura)
-                    {
-                        if (beca.Porcentaje > 0) descuentoMensual = montoMensual * (beca.Porcentaje / 100);
-                        else descuentoMensual = beca.MontoFijo;
-                    }
 
                     var mesesDobles = plan.MesesDobleCobro?
                         .Split(',')
@@ -81,6 +200,8 @@ namespace Gremelik.API.Controllers
                         .Where(n => n > 0).ToList() ?? new List<int>();
 
                     DateTime fechaBase = ciclo.FechaInicio;
+
+                    // ... (El resto del ciclo for se queda exactamente igual) ...
 
                     for (int i = 1; i <= plan.NumeroPagos; i++)
                     {
@@ -182,13 +303,21 @@ namespace Gremelik.API.Controllers
                 // ---------------------------------------------------------
                 // C) GENERAR PAGOS ÚNICOS (LIBROS, UNIFORMES)
                 // ---------------------------------------------------------
-                // AQUÍ ES DONDE TE DABA ERROR ANTES: Ahora 'alumno', 'ciclo' y 'usuario' ya existen.
                 if (dto.ConceptosUnicosIds.Any())
                 {
+                    // Obtenemos los conceptos que YA se le cobraron en este ciclo para no repetirlos
+                    var cargosActualesDelAlumno = await _context.CuentasPorCobrar
+                        .Where(c => c.AlumnoId == alumno.Id && c.CicloEscolarId == ciclo.Id && c.Activo)
+                        .Select(c => c.ConceptoPagoId)
+                        .ToListAsync();
+
                     var unicos = await _context.ConceptosPago.Where(c => dto.ConceptosUnicosIds.Contains(c.Id)).ToListAsync();
 
                     foreach (var item in unicos)
                     {
+                        // EL FILTRO ANTI-DUPLICIDAD: Si ya tiene este cargo, lo saltamos silenciosamente
+                        if (cargosActualesDelAlumno.Contains(item.Id)) continue;
+
                         DateTime fechaVencimiento = dto.FechaInicioCobro ?? DateTime.Now;
 
                         var cargoUnico = new CuentaPorCobrar
@@ -197,12 +326,12 @@ namespace Gremelik.API.Controllers
                             Usuario = usuario,
                             AlumnoId = alumno.Id,
                             CicloEscolarId = ciclo.Id,
-                            ConceptoNombre = item.Nombre, // Ej: "Libros 1ro"
+                            ConceptoNombre = item.Nombre,
                             ConceptoPagoId = item.Id,
                             FechaVencimiento = fechaVencimiento,
                             MontoBase = item.Monto,
                             DescuentoBeca = 0,
-                            NumeroDePago = 1, // Es único
+                            NumeroDePago = 1,
                             Estado = "PENDIENTE",
                             FechaRegistro = DateTime.Now,
                             EsFacturable = item.EsFacturable,

@@ -1,6 +1,6 @@
 ﻿@page "/alumnos/tutores"
 @using Gremelik.core.Entities
-@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin")]
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin, Coordinador, Cajero")]
 @inject HttpClient Http
 @inject IJSRuntime JS
 
@@ -13,7 +13,7 @@
                 <div class="card-header bg-primary text-white fw-bold">1. Buscar Alumno</div>
                 <div class="card-body">
                     <div class="input-group mb-3">
-                        <input type="text" class="form-control" placeholder="Matrícula o Nombre..." @bind="textoBusqueda" @onkeyup="@EnterBuscar" />
+                        <input type="text" class="form-control" placeholder="Matrícula o Nombre..." @bind="textoBusqueda" @bind:event="oninput" @onkeyup="@EnterBuscar" />
                         <button class="btn btn-primary" @onclick="BuscarAlumno"><i class="bi bi-search"></i></button>
                     </div>
 
@@ -22,9 +22,9 @@
                         <div class="list-group">
                             @foreach (var a in resultadosBusqueda)
                             {
-                                <button class="list-group-item list-group-item-action" @onclick="() => SeleccionarAlumno(a)">
+                                <button class="list-group-item list-group-item-action @(alumnoSeleccionado?.Id == a.Id ? "active" : "")" @onclick="() => SeleccionarAlumno(a)">
                                     <strong>@a.PrimerApellido @a.SegundoApellido @a.Nombre</strong> <br />
-                                    <small class="text-muted">@a.Matricula</small>
+                                    <small class="@(alumnoSeleccionado?.Id == a.Id ? "text-white" : "text-muted")">@a.Matricula</small>
                                 </button>
                             }
                         </div>
@@ -72,10 +72,15 @@
                                                 </button>
                                             </div>
                                         </div>
-                                        <div class="bg-light p-2 rounded small">
-                                            <strong>RFC:</strong> @(string.IsNullOrEmpty(t.RFC) ? "No capturado" : t.RFC) <br />
-                                            <strong>Régimen:</strong> @(string.IsNullOrEmpty(t.RegimenFiscal) ? "N/A" : t.RegimenFiscal) <br />
-                                            <strong>CP:</strong> @(string.IsNullOrEmpty(t.CodigoPostal) ? "N/A" : t.CodigoPostal)
+                                        <div class="bg-light p-2 rounded small border mt-2">
+                                            <strong>RFC:</strong> @(string.IsNullOrEmpty(t.RFC) ? "N/A" : t.RFC) |
+                                            <strong>Régimen:</strong> @(string.IsNullOrEmpty(t.RegimenFiscal) ? "N/A" : t.RegimenFiscal) |
+                                            <strong>CP:</strong> @(string.IsNullOrEmpty(t.CodigoPostal) ? "N/A" : t.CodigoPostal) <br />
+                                            <strong>Uso CFDI:</strong> @(string.IsNullOrEmpty(t.UsoCFDI) ? "N/A" : t.UsoCFDI)
+                                        </div>
+                                        <div class="text-secondary small mt-1">
+                                            <i class="bi bi-telephone-fill"></i> @(string.IsNullOrEmpty(t.TelefonoMovil) ? "Sin teléfono" : t.TelefonoMovil) |
+                                            <i class="bi bi-envelope-fill"></i> @(string.IsNullOrEmpty(t.CorreoElectronico) ? "Sin correo" : t.CorreoElectronico)
                                         </div>
                                     </div>
                                 }
@@ -101,46 +106,161 @@
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header @(editando ? "bg-primary" : "bg-dark") text-white">
-                    <h5 class="modal-title">@(editando ? "Editar Tutor" : "Registrar Nuevo Tutor")</h5>
+                    <h5 class="modal-title">@(editando ? "Editar Tutor" : "Registrar / Vincular Tutor")</h5>
                     <button class="btn-close btn-close-white" @onclick="()=>mostrarModal=false"></button>
                 </div>
                 <div class="modal-body">
-                    <EditForm Model="@tutorActual" OnSubmit="GuardarTutor">
-                        <div class="row">
-                            <div class="col-md-4 mb-3"><label class="fw-bold">Nombre(s) *</label><InputText class="form-control" @bind-Value="tutorActual.Nombre" required /></div>
-                            <div class="col-md-4 mb-3"><label class="fw-bold">Primer Apellido *</label><InputText class="form-control" @bind-Value="tutorActual.PrimerApellido" required /></div>
-                            <div class="col-md-4 mb-3"><label class="fw-bold">Segundo Apellido</label><InputText class="form-control" @bind-Value="tutorActual.SegundoApellido" /></div>
-                        </div>
 
-                        <hr />
-                        <h6 class="text-primary fw-bold"><i class="bi bi-receipt"></i> Datos de Facturación (Opcional)</h6>
-
-                        <div class="row">
-                            <div class="col-md-4 mb-3">
-                                <label class="fw-bold">RFC</label>
-                                <InputText class="form-control text-uppercase" @bind-Value="tutorActual.RFC" placeholder="Ej: XAXX010101000" maxlength="13" />
+                    @if (!editando)
+                    {
+                        <div class="d-flex justify-content-center gap-4 mb-4 border-bottom pb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="modoTutor" id="rdoNuevo" checked="@modoNuevoTutor" @onchange="() => CambiarModo(true)">
+                                <label class="form-check-label fw-bold text-primary" for="rdoNuevo"><i class="bi bi-person-plus"></i> Crear Nuevo</label>
                             </div>
-                            <div class="col-md-5 mb-3">
-                                <label class="fw-bold">Régimen Fiscal</label>
-                                <InputSelect class="form-select" @bind-Value="tutorActual.RegimenFiscal">
-                                    <option value="">-- Seleccionar --</option>
-                                    <option value="601">601 - General de Ley Personas Morales</option>
-                                    <option value="605">605 - Sueldos y Salarios e Ingresos Asimilados</option>
-                                    <option value="612">612 - Personas Físicas con Actividades Empresariales y Profesionales</option>
-                                    <option value="626">626 - Régimen Simplificado de Confianza (RESICO)</option>
-                                </InputSelect>
-                            </div>
-                            <div class="col-md-3 mb-3">
-                                <label class="fw-bold">Código Postal</label>
-                                <InputText class="form-control" @bind-Value="tutorActual.CodigoPostal" maxlength="5" />
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="modoTutor" id="rdoExistente" checked="@(!modoNuevoTutor)" @onchange="() => CambiarModo(false)">
+                                <label class="form-check-label fw-bold text-success" for="rdoExistente"><i class="bi bi-search"></i> Vincular Tutor Existente</label>
                             </div>
                         </div>
+                    }
 
-                        @if (!editando)
+                    @if (modoNuevoTutor || editando)
+                    {
+                        <EditForm Model="@tutorActual" OnSubmit="GuardarTutor">
+                            <div class="row">
+                                <div class="col-md-4 mb-3"><label class="fw-bold">Nombre(s) *</label><InputText class="form-control" @bind-Value="tutorActual.Nombre" required /></div>
+                                <div class="col-md-4 mb-3"><label class="fw-bold">Primer Apellido *</label><InputText class="form-control" @bind-Value="tutorActual.PrimerApellido" required /></div>
+                                <div class="col-md-4 mb-3"><label class="fw-bold">Segundo Apellido</label><InputText class="form-control" @bind-Value="tutorActual.SegundoApellido" /></div>
+                            </div>
+
+                            <h6 class="text-success fw-bold mt-2"><i class="bi bi-person-lines-fill"></i> Datos de Contacto</h6>
+                            <div class="row bg-light p-2 rounded border mx-0 mb-3">
+                                <div class="col-md-5 mb-3">
+                                    <label class="fw-bold small">Correo Electrónico</label>
+                                    <InputText class="form-control form-control-sm" @bind-Value="tutorActual.CorreoElectronico" placeholder="ejemplo@correo.com" type="email" />
+                                </div>
+                                <div class="col-md-3 mb-3">
+                                    <label class="fw-bold small">Teléfono Móvil</label>
+                                    <InputText class="form-control form-control-sm" @bind-Value="tutorActual.TelefonoMovil" placeholder="10 dígitos" maxlength="20" />
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label class="fw-bold small">Dirección (Calle, Col.)</label>
+                                    <InputText class="form-control form-control-sm" @bind-Value="tutorActual.DireccionFisica" />
+                                </div>
+                            </div>
+
+                            <h6 class="text-primary fw-bold mt-2"><i class="bi bi-receipt"></i> Datos de Facturación CFDI 4.0</h6>
+                            <div class="row bg-light p-2 rounded border mx-0 mb-3">
+                                <div class="col-md-4 mb-3">
+                                    <label class="fw-bold small">RFC</label>
+                                    <InputText class="form-control text-uppercase form-control-sm" @bind-Value="tutorActual.RFC" placeholder="Ej: XAXX010101000" maxlength="13" />
+                                </div>
+                                <div class="col-md-2 mb-3">
+                                    <label class="fw-bold small">CP</label>
+                                    <InputText class="form-control form-control-sm" @bind-Value="tutorActual.CodigoPostal" maxlength="5" />
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="fw-bold small">Régimen Fiscal</label>
+                                    <InputSelect class="form-select form-select-sm" @bind-Value="tutorActual.RegimenFiscal">
+                                        <option value="">-- Seleccionar --</option>
+                                        <optgroup label="Personas Físicas">
+                                            <option value="605">605 - Sueldos y Salarios e Ingresos Asimilados</option>
+                                            <option value="606">606 - Arrendamiento</option>
+                                            <option value="608">608 - Demás ingresos</option>
+                                            <option value="611">611 - Ingresos por Dividendos (socios y accionistas)</option>
+                                            <option value="612">612 - Personas Físicas con Actividades Empresariales y Profesionales</option>
+                                            <option value="614">614 - Ingresos por intereses</option>
+                                            <option value="615">615 - Régimen de los ingresos por obtención de premios</option>
+                                            <option value="616">616 - Sin obligaciones fiscales</option>
+                                            <option value="621">621 - Incorporación Fiscal (RIF)</option>
+                                            <option value="625">625 - Actividades Empresariales con ingresos a través de Plataformas Tecnológicas</option>
+                                            <option value="626">626 - Régimen Simplificado de Confianza (RESICO)</option>
+                                        </optgroup>
+                                        <optgroup label="Personas Morales">
+                                            <option value="601">601 - General de Ley Personas Morales</option>
+                                            <option value="603">603 - Personas Morales con Fines no Lucrativos</option>
+                                            <option value="622">622 - Actividades Agrícolas, Ganaderas, Silvícolas y Pesqueras</option>
+                                        </optgroup>
+                                    </InputSelect>
+                                </div>
+                                <div class="col-md-12 mb-2">
+                                    <label class="fw-bold small">Uso CFDI Frecuente</label>
+                                    <InputSelect class="form-select form-select-sm border-primary" @bind-Value="tutorActual.UsoCFDI">
+                                        <option value="">-- Selecciona según tu régimen --</option>
+                                        @foreach (var uso in UsosCfdiPermitidos)
+                                        {
+                                            <option value="@uso.Clave">@uso.Clave - @uso.Descripcion</option>
+                                        }
+                                    </InputSelect>
+                                    @if (tutorActual.RegimenFiscal == "616")
+                                    {
+                                        <small class="text-danger d-block mt-1">El régimen 616 solo permite el uso S01.</small>
+                                    }
+                                </div>
+                            </div>
+
+                            @if (!editando)
+                            {
+                                <div class="mb-3 p-3 bg-white rounded border border-primary">
+                                    <label class="fw-bold text-dark">Parentesco con el Alumno *</label>
+                                    <select class="form-select border-primary" @bind="parentesco" required>
+                                        <option value="">-- Seleccionar --</option>
+                                        <option value="Padre">Padre</option>
+                                        <option value="Madre">Madre</option>
+                                        <option value="Tutor">Tutor Legal</option>
+                                        <option value="Familiar">Familiar (Tío, Abuelo, etc)</option>
+                                    </select>
+                                </div>
+                            }
+
+                            <button class="btn btn-success w-100 shadow fw-bold mt-2" type="submit">
+                                <i class="bi bi-check-circle-fill"></i> Guardar Tutor
+                            </button>
+                        </EditForm>
+                    }
+                    else
+                    {
+                        <div class="mb-3">
+                            <label class="fw-bold text-success">Buscar en la Base de Datos (Nombre o RFC)</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control border-success" placeholder="Ej: Pérez..." @bind="busquedaTutor" @bind:event="oninput" @onkeyup="EnterBuscarTutorExistente" />
+                                <button class="btn btn-success" type="button" @onclick="BuscarTutorExistente">
+                                    @if (buscandoTutor)
+                                    {
+                                        <span class="spinner-border spinner-border-sm"></span>
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-search"></i>
+                                    }
+                                </button>
+                            </div>
+                        </div>
+
+                        @if (resultadosTutores != null && resultadosTutores.Any())
                         {
-                            <div class="mb-3 p-3 bg-light rounded border">
-                                <label class="fw-bold text-success">Parentesco con el Alumno *</label>
-                                <select class="form-select border-success" @bind="parentesco" required>
+                            <div class="list-group mb-3 shadow-sm" style="max-height: 200px; overflow-y: auto;">
+                                @foreach (var t in resultadosTutores)
+                                {
+                                    <button type="button" class="list-group-item list-group-item-action @(tutorExistenteSeleccionado?.Id == t.Id ? "active bg-success border-success" : "")"
+                                            @onclick="() => SeleccionarTutorExistente(t)">
+                                        <strong>@t.Nombre @t.PrimerApellido @t.SegundoApellido</strong>
+                                        <small class="d-block @(tutorExistenteSeleccionado?.Id == t.Id ? "text-white" : "text-muted")">RFC: @(string.IsNullOrEmpty(t.RFC) ? "N/A" : t.RFC)</small>
+                                    </button>
+                                }
+                            </div>
+                        }
+                        else if (resultadosTutores != null && !resultadosTutores.Any())
+                        {
+                            <div class="alert alert-warning py-2 small">No se encontró ningún tutor con ese nombre.</div>
+                        }
+
+                        @if (tutorExistenteSeleccionado != null)
+                        {
+                            <div class="mb-3 p-3 bg-success bg-opacity-10 rounded border border-success">
+                                <label class="fw-bold text-dark">¿Qué parentesco tiene con @alumnoSeleccionado?.Nombre? *</label>
+                                <select class="form-select border-success mt-2" @bind="parentesco">
                                     <option value="">-- Seleccionar --</option>
                                     <option value="Padre">Padre</option>
                                     <option value="Madre">Madre</option>
@@ -148,12 +268,12 @@
                                     <option value="Familiar">Familiar (Tío, Abuelo, etc)</option>
                                 </select>
                             </div>
-                        }
 
-                        <button type="submit" class="btn @(editando ? "btn-primary" : "btn-success") w-100 shadow mt-3">
-                            @(editando ? "Guardar Cambios" : "Guardar y Vincular")
-                        </button>
-                    </EditForm>
+                            <button class="btn btn-success w-100 shadow fw-bold" @onclick="VincularTutorExistente" disabled="@(string.IsNullOrEmpty(parentesco))">
+                                <i class="bi bi-link"></i> Vincular Tutor al Alumno
+                            </button>
+                        }
+                    }
                 </div>
             </div>
         </div>
@@ -166,18 +286,23 @@
     Alumno? alumnoSeleccionado;
     List<Tutor>? tutoresAlumno;
 
-    // Variables para el Modal
     bool mostrarModal = false;
     bool editando = false;
-    Tutor tutorActual = new() { Nombre = "", PrimerApellido = "", RFC = "", Usuario = "" };
+    bool modoNuevoTutor = true;
     string parentesco = "";
+
+    Tutor tutorActual = new() { Nombre = "", PrimerApellido = "", RFC = "", Usuario = "", UsoCFDI = "D10", CorreoElectronico = "", TelefonoMovil = "", DireccionFisica = "" };
+
+    string busquedaTutor = "";
+    bool buscandoTutor = false;
+    List<Tutor>? resultadosTutores;
+    Tutor? tutorExistenteSeleccionado;
 
     async Task BuscarAlumno()
     {
         if (string.IsNullOrWhiteSpace(textoBusqueda)) return;
         resultadosBusqueda = await Http.GetFromJsonAsync<List<Alumno>>($"api/Alumnos/buscar/{textoBusqueda}");
     }
-
     async Task EnterBuscar(KeyboardEventArgs e) { if (e.Key == "Enter") await BuscarAlumno(); }
 
     async Task SeleccionarAlumno(Alumno a)
@@ -192,19 +317,28 @@
         tutoresAlumno = await Http.GetFromJsonAsync<List<Tutor>>($"api/Caja/tutores/{alumnoSeleccionado.Id}");
     }
 
-    // --- ACCIONES CRUD ---
-
     void AbrirModalNuevoTutor()
     {
-        tutorActual = new() { Nombre = "", PrimerApellido = "", RFC = "", Usuario = "" };
+        tutorActual = new() { Nombre = "", PrimerApellido = "", RFC = "", Usuario = "", UsoCFDI = "D10", CorreoElectronico = "", TelefonoMovil = "", DireccionFisica = "" };
         parentesco = "Madre";
         editando = false;
+        modoNuevoTutor = true;
+
+        busquedaTutor = "";
+        resultadosTutores = null;
+        tutorExistenteSeleccionado = null;
+
         mostrarModal = true;
+    }
+
+    void CambiarModo(bool esNuevo)
+    {
+        modoNuevoTutor = esNuevo;
+        parentesco = "";
     }
 
     void EditarTutor(Tutor t)
     {
-        // Clonamos el objeto para no editar en vivo la lista visual hasta que le de "Guardar"
         tutorActual = new Tutor
             {
                 Id = t.Id,
@@ -214,9 +348,14 @@
                 RFC = t.RFC,
                 RegimenFiscal = t.RegimenFiscal,
                 CodigoPostal = t.CodigoPostal,
-                Usuario = "" // Se asigna en el backend
+                UsoCFDI = string.IsNullOrEmpty(t.UsoCFDI) ? "D10" : t.UsoCFDI, // Recupera el uso CFDI
+                CorreoElectronico = t.CorreoElectronico,
+                TelefonoMovil = t.TelefonoMovil,
+                DireccionFisica = t.DireccionFisica,
+                Usuario = ""
             };
         editando = true;
+        modoNuevoTutor = true;
         mostrarModal = true;
     }
 
@@ -230,17 +369,11 @@
 
         if (editando)
         {
-            // PUT: Actualizar existente
             var res = await Http.PutAsJsonAsync($"api/Tutores/{tutorActual.Id}", tutorActual);
-            if (res.IsSuccessStatusCode)
-            {
-                mostrarModal = false;
-                await CargarTutores();
-            }
+            if (res.IsSuccessStatusCode) { mostrarModal = false; await CargarTutores(); }
         }
         else
         {
-            // POST: Crear nuevo y vincular
             var res = await Http.PostAsJsonAsync("api/Tutores", tutorActual);
             if (res.IsSuccessStatusCode)
             {
@@ -252,19 +385,95 @@
         }
     }
 
+    async Task BuscarTutorExistente()
+    {
+        if (string.IsNullOrWhiteSpace(busquedaTutor)) return;
+        buscandoTutor = true;
+        tutorExistenteSeleccionado = null;
+        resultadosTutores = await Http.GetFromJsonAsync<List<Tutor>>($"api/Tutores/buscar/{busquedaTutor}");
+        buscandoTutor = false;
+    }
+
+    async Task EnterBuscarTutorExistente(KeyboardEventArgs e) { if (e.Key == "Enter") await BuscarTutorExistente(); }
+
+    void SeleccionarTutorExistente(Tutor t)
+    {
+        tutorExistenteSeleccionado = t;
+        parentesco = "Padre";
+    }
+
+    async Task VincularTutorExistente()
+    {
+        if (tutorExistenteSeleccionado == null || string.IsNullOrEmpty(parentesco)) return;
+
+        if (tutoresAlumno != null && tutoresAlumno.Any(t => t.Id == tutorExistenteSeleccionado.Id))
+        {
+            await JS.InvokeVoidAsync("alert", "Este tutor ya está vinculado a este alumno.");
+            return;
+        }
+
+        var res = await Http.PostAsJsonAsync($"api/Tutores/{tutorExistenteSeleccionado.Id}/vincular/{alumnoSeleccionado!.Id}", parentesco);
+        if (res.IsSuccessStatusCode)
+        {
+            mostrarModal = false;
+            await CargarTutores();
+        }
+        else
+        {
+            await JS.InvokeVoidAsync("alert", "Error al vincular el tutor.");
+        }
+    }
+
     async Task EliminarTutor(Guid id)
     {
         if (await JS.InvokeAsync<bool>("confirm", "⚠️ ¿Estás seguro de quitar a este tutor?\n\nNo se borrará de los recibos históricos, pero ya no aparecerá en la caja."))
         {
             var res = await Http.DeleteAsync($"api/Tutores/{id}");
-            if (res.IsSuccessStatusCode)
+            if (res.IsSuccessStatusCode) await CargarTutores();
+            else await JS.InvokeVoidAsync("alert", "Error al eliminar.");
+        }
+    }
+
+    // Estructura auxiliar
+    class UsoCfdi { public string Clave { get; set; } = ""; public string Descripcion { get; set; } = ""; }
+
+    // Catálogo completo de los usos que nos interesan en la escuela
+    List<UsoCfdi> CatálogoUsos = new()
+    {
+        new() { Clave = "D10", Descripcion = "Pagos por servicios educativos (colegiaturas)" },
+        new() { Clave = "G03", Descripcion = "Gastos en general" },
+        new() { Clave = "G01", Descripcion = "Adquisición de mercancías" },
+        new() { Clave = "S01", Descripcion = "Sin efectos fiscales" },
+        new() { Clave = "CP01", Descripcion = "Pagos" }
+    };
+
+    // Filtro dinámico según la matriz del SAT CFDI 4.0
+    IEnumerable<UsoCfdi> UsosCfdiPermitidos
+    {
+        get
+        {
+            var regimen = tutorActual.RegimenFiscal;
+
+            // Si no ha seleccionado régimen, le mostramos todos para no bloquearlo
+            if (string.IsNullOrEmpty(regimen)) return CatálogoUsos;
+
+            // 1. Régimen 616 (Sin Obligaciones): El SAT SOLAMENTE permite "S01"
+            if (regimen == "616")
             {
-                await CargarTutores();
+                // Si tenía otro, lo forzamos a S01 para evitar el error
+                if (tutorActual.UsoCFDI != "S01") tutorActual.UsoCFDI = "S01";
+                return CatálogoUsos.Where(u => u.Clave == "S01");
             }
-            else
+
+            // 2. Personas Morales (Empresas): El SAT prohíbe el D10 (Colegiaturas)
+            if (regimen == "601" || regimen == "603" || regimen == "622")
             {
-                await JS.InvokeVoidAsync("alert", "Error al eliminar.");
+                if (tutorActual.UsoCFDI == "D10") tutorActual.UsoCFDI = ""; // Lo limpiamos si lo tenía
+                return CatálogoUsos.Where(u => u.Clave != "D10");
             }
+
+            // 3. Personas Físicas comunes: Se les permite todo (D10, G03, etc)
+            return CatálogoUsos;
         }
     }
 }

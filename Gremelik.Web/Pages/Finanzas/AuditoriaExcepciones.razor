@@ -1,0 +1,163 @@
+﻿@page "/finanzas/auditoria-excepciones"
+@using Gremelik.core.Entities
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin")]
+@inject HttpClient Http
+
+<div class="container-fluid pb-5">
+    <h3 class="mb-4"><i class="bi bi-shield-lock-fill text-warning"></i> Auditoría de Excepciones de Caja</h3>
+    <p class="text-muted">Registro de todas las becas restauradas y recargos perdonados manualmente por los cajeros.</p>
+
+    <div class="card mb-4 border-warning shadow-sm">
+        <div class="card-body bg-light d-flex align-items-center gap-3 py-2">
+            <label class="fw-bold text-warning"><i class="bi bi-calendar-event"></i> Ciclo Escolar:</label>
+            <select class="form-select w-auto fw-bold" value="@cicloSeleccionadoId" @onchange="CambiarCiclo">
+                <option value="0">-- Selecciona --</option>
+                @if (ciclos != null)
+                {
+                    foreach (var c in ciclos)
+                    {
+                        <option value="@c.Id">@c.Nombre</option>
+                    }
+                }
+            </select>
+            @if (cargando)
+            {
+                <div class="spinner-border spinner-border-sm text-warning"></div>
+            }
+        </div>
+    </div>
+
+    @if (cicloSeleccionadoId != 0)
+    {
+        <div class="card shadow-sm border-0">
+            <div class="card-body p-0">
+                @if (excepciones == null)
+                {
+                    <div class="text-center py-5"><div class="spinner-border text-warning"></div></div>
+                }
+                else if (!excepciones.Any())
+                {
+                    <div class="alert alert-success m-4 shadow-sm">
+                        <i class="bi bi-check-circle-fill"></i> Excelente. No hay excepciones registradas en este ciclo. Los cobros han fluido según las reglas automáticas.
+                    </div>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Fecha / Hora</th>
+                                    <th>Cajero (Usuario)</th>
+                                    <th>Alumno / Ticket</th>
+                                    <th>Concepto Alterado</th>
+                                    <th>Acción Realizada</th>
+                                    <th>Motivo Registrado</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var ex in excepciones)
+                                {
+                                    <tr>
+                                        <td>
+                                            <span class="fw-bold d-block text-dark">@ex.FechaRegistro.ToShortDateString()</span>
+                                            <small class="text-muted">@ex.FechaRegistro.ToShortTimeString()</small>
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-secondary"><i class="bi bi-person-badge"></i> @ex.Usuario</span>
+                                        </td>
+                                        <td>
+                                            <strong>@ex.AlumnoNombre</strong><br />
+                                            <small class="text-muted">Folio: <strong>@ex.FolioPago</strong> | Matrícula: @ex.Matricula</small>
+                                        </td>
+                                        <td>@ex.Concepto</td>
+                                        <td>
+                                            @if (ex.BecaRestaurada > 0)
+                                            {
+                                                <span class="badge bg-warning text-dark border border-warning d-block mb-1 py-2">
+                                                    <i class="bi bi-award"></i> Restauró Beca: $@ex.BecaRestaurada.ToString("N2")
+                                                </span>
+                                            }
+                                            @if (ex.RecargoPerdonado > 0)
+                                            {
+                                                <span class="badge bg-danger text-white d-block py-2">
+                                                    <i class="bi bi-exclamation-triangle"></i> Perdonó Recargo: $@ex.RecargoPerdonado.ToString("N2")
+                                                </span>
+                                            }
+                                        </td>
+                                        <td>
+                                            <div class="bg-light p-2 rounded border small fst-italic text-muted">
+                                                "@ex.Motivo"
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    public class ExcepcionAuditoriaDto
+    {
+        public Guid Id { get; set; }
+        public DateTime FechaRegistro { get; set; }
+        public string Usuario { get; set; } = "";
+        public string AlumnoNombre { get; set; } = "";
+        public string Matricula { get; set; } = "";
+        public string FolioPago { get; set; } = "";
+        public string Concepto { get; set; } = "";
+        public string Motivo { get; set; } = "";
+        public decimal BecaRestaurada { get; set; }
+        public decimal RecargoPerdonado { get; set; }
+    }
+
+    List<CicloEscolar>? ciclos;
+    List<ExcepcionAuditoriaDto>? excepciones;
+    int cicloSeleccionadoId = 0;
+    bool cargando = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var todos = await Http.GetFromJsonAsync<List<CicloEscolar>>("api/Ciclos");
+        if (todos != null)
+        {
+            ciclos = todos.OrderByDescending(c => c.FechaInicio).ToList();
+
+            // Intenta cargar el ciclo actual por defecto
+            var cicloActual = ciclos.FirstOrDefault(c => c.Estatus == EstatusCiclo.Actual);
+            if (cicloActual != null)
+            {
+                cicloSeleccionadoId = cicloActual.Id;
+                await CargarExcepciones();
+            }
+            else if (ciclos.Any())
+            {
+                cicloSeleccionadoId = ciclos.First().Id;
+                await CargarExcepciones();
+            }
+        }
+    }
+
+    private async Task CambiarCiclo(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int id))
+        {
+            cicloSeleccionadoId = id;
+            await CargarExcepciones();
+        }
+    }
+
+    private async Task CargarExcepciones()
+    {
+        if (cicloSeleccionadoId == 0) return;
+
+        cargando = true;
+        excepciones = await Http.GetFromJsonAsync<List<ExcepcionAuditoriaDto>>($"api/Caja/auditoria/excepciones/{cicloSeleccionadoId}");
+        cargando = false;
+    }
+}

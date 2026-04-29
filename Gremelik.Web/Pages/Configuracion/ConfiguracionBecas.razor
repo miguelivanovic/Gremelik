@@ -1,18 +1,24 @@
 ﻿@page "/configuracion/becas"
 @using Gremelik.core.Entities
-@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin")]
+@attribute [Authorize(Roles = "GlobalAdmin, SchoolAdmin, Coordinador")]
 @inject HttpClient Http
 @inject IJSRuntime JS
 
 <div class="container-fluid">
     <h3 class="mb-3">🎓 Catálogo de Becas</h3>
-    
+
     <div class="card mb-4 border-primary shadow-sm">
         <div class="card-body bg-light d-flex align-items-center gap-3 py-2">
             <label class="fw-bold text-primary"><i class="bi bi-calendar-event"></i> Ciclo Escolar:</label>
             <select class="form-select w-auto fw-bold" value="@cicloSeleccionadoId" @onchange="CambiarCiclo">
                 <option value="0">-- Selecciona --</option>
-                @if (ciclos != null) { foreach (var c in ciclos) { <option value="@c.Id">@c.Nombre</option> } }
+                @if (ciclos != null)
+                {
+                    foreach (var c in ciclos)
+                    {
+                        <option value="@c.Id">@c.Nombre</option>
+                    }
+                }
             </select>
         </div>
     </div>
@@ -43,28 +49,45 @@
                             <div class="card-body">
                                 <div class="d-flex justify-content-between align-items-start">
                                     <h5 class="card-title text-dark fw-bold mb-0">@b.Nombre</h5>
-                                    <div class="dropdown">
-                                        <button class="btn btn-sm btn-light" data-bs-toggle="dropdown">
-                                            <i class="bi bi-three-dots-vertical"></i>
+
+                                    <div class="d-flex gap-2">
+                                        <button class="btn btn-sm btn-outline-primary" title="Editar" @onclick="() => Editar(b)">
+                                            <i class="bi bi-pencil-fill"></i>
                                         </button>
-                                        <ul class="dropdown-menu">
-                                            <li><button class="dropdown-item" @onclick="() => Editar(b)">Editar</button></li>
-                                            <li><button class="dropdown-item text-danger" @onclick="() => Eliminar(b.Id)">Eliminar</button></li>
-                                        </ul>
+                                        <button class="btn btn-sm btn-outline-danger" title="Inactivar" @onclick="() => Inactivar(b.Id)">
+                                            <i class="bi bi-trash-fill"></i>
+                                        </button>
                                     </div>
                                 </div>
-                                
+
+                                @if (b.ReglaHermano != TipoReglaBeca.Ninguna)
+                                {
+                                    <span class="badge bg-warning text-dark mt-2 border border-warning" style="font-size: 0.7rem;">
+                                        <i class="bi bi-people-fill"></i> REGLA: @GetReglaNombre(b.ReglaHermano)
+                                    </span>
+                                }
+
                                 <h3 class="my-3 text-info fw-bold">
-                                    @if(b.Porcentaje > 0) { <span>@b.Porcentaje.ToString("0")%</span> }
-                                    else { <span>$@b.MontoFijo.ToString("N0")</span> }
+                                    @if (b.Porcentaje > 0)
+                                    {
+                                        <span>@b.Porcentaje.ToString("0")%</span>
+                                    }
+                                    else
+                                    {
+                                        <span>$@b.MontoFijo.ToString("N0")</span>
+                                    }
                                     <small class="text-muted fs-6 fw-normal"> descuento</small>
                                 </h3>
 
                                 <div class="d-flex gap-2 flex-wrap">
-                                    @if(b.AplicaEnColegiatura) 
-                                    { <span class="badge bg-light text-dark border"><i class="bi bi-calendar-check"></i> Colegiatura</span> }
-                                    @if(b.AplicaEnInscripcion) 
-                                    { <span class="badge bg-light text-dark border"><i class="bi bi-pencil-square"></i> Inscripción</span> }
+                                    @if (b.AplicaEnColegiatura)
+                                    {
+                                        <span class="badge bg-light text-dark border"><i class="bi bi-calendar-check"></i> Colegiatura</span>
+                                    }
+                                    @if (b.AplicaEnInscripcion)
+                                    {
+                                        <span class="badge bg-light text-dark border"><i class="bi bi-pencil-square"></i> Inscripción</span>
+                                    }
                                 </div>
                             </div>
                         </div>
@@ -90,8 +113,8 @@
                             <label class="fw-bold">Nombre de la Beca</label>
                             <InputText class="form-control" @bind-Value="nuevaBeca.Nombre" placeholder="Ej: Hermanos, Excelencia" />
                         </div>
-                        
-                        <div class="row mb-3 bg-light p-2 rounded mx-0">
+
+                        <div class="row mb-3 bg-light p-2 rounded mx-0 border">
                             <div class="col-6">
                                 <label class="fw-bold">Porcentaje (%)</label>
                                 <InputNumber class="form-control fw-bold text-primary" @bind-Value="nuevaBeca.Porcentaje" />
@@ -102,6 +125,21 @@
                             </div>
                             <small class="text-muted mt-2 text-center">
                                 <i class="bi bi-info-circle"></i> Llena solo uno. Si ambos tienen valor, el sistema prioriza Porcentaje.
+                            </small>
+                        </div>
+
+                        <div class="mb-3 p-2 bg-warning bg-opacity-10 border border-warning rounded">
+                            <label class="fw-bold text-dark d-block mb-1"><i class="bi bi-diagram-3-fill"></i> Regla Especial (Para Hermanos)</label>
+                            <InputSelect class="form-select border-warning" @bind-Value="nuevaBeca.ReglaHermano">
+                                <option value="@TipoReglaBeca.Ninguna">Beca Normal (No requiere tener hermanos)</option>
+                                <option value="@TipoReglaBeca.HermanoMayor">Aplica solo al Hermano Mayor (Grado más alto)</option>
+                                <option value="@TipoReglaBeca.HermanoMenor">Aplica solo al Hermano Menor (Grado más bajo)</option>
+                                <option value="@TipoReglaBeca.ColegiaturaMasCara">Aplica a la Colegiatura Más Cara</option>
+                                <option value="@TipoReglaBeca.ColegiaturaMasBarata">Aplica a la Colegiatura Más Barata</option>
+                                <option value="@TipoReglaBeca.TodosLosHermanos">Aplica a TODOS si tienen hermanos</option>
+                            </InputSelect>
+                            <small class="text-muted mt-1 d-block" style="font-size: 0.75rem;">
+                                Si eliges una regla especial, el sistema validará automáticamente a la familia al momento de cobrar.
                             </small>
                         </div>
 
@@ -117,7 +155,7 @@
                             </div>
                         </div>
 
-                        <button type="submit" class="btn btn-primary w-100 mt-3">Guardar Beca</button>
+                        <button type="submit" class="btn btn-primary w-100 mt-3 fw-bold">Guardar Beca</button>
                     </EditForm>
                 </div>
             </div>
@@ -129,22 +167,27 @@
     List<CicloEscolar>? ciclos;
     List<Beca>? becas;
     Beca nuevaBeca = new() { Usuario = "" };
-    
+
     int cicloSeleccionadoId = 0;
     bool mostrarModal = false;
 
     protected override async Task OnInitializedAsync()
     {
         var todos = await Http.GetFromJsonAsync<List<CicloEscolar>>("api/Ciclos");
-        if(todos != null) ciclos = todos.OrderByDescending(c => c.FechaInicio).ToList();
+        if (todos != null) ciclos = todos.OrderByDescending(c => c.FechaInicio).ToList();
     }
 
     private async Task CambiarCiclo(ChangeEventArgs e)
     {
-        if (int.TryParse(e.Value?.ToString(), out int id))
+        if (int.TryParse(e.Value?.ToString(), out int id) && id != 0)
         {
             cicloSeleccionadoId = id;
             await CargarBecas();
+        }
+        else
+        {
+            cicloSeleccionadoId = 0;
+            becas = null;
         }
     }
 
@@ -153,39 +196,75 @@
         becas = await Http.GetFromJsonAsync<List<Beca>>($"api/Becas/ciclo/{cicloSeleccionadoId}");
     }
 
-    void AbrirModal() {
-        nuevaBeca = new() { 
-            Usuario = "", 
-            Porcentaje = 0, 
-            MontoFijo = 0, 
-            AplicaEnColegiatura = true, 
-            Activo = true,
-            CicloEscolarId = cicloSeleccionadoId // IMPORTANTE: Se asigna al ciclo actual
-        };
+    void AbrirModal()
+    {
+        nuevaBeca = new()
+            {
+                Usuario = "",
+                Porcentaje = 0,
+                MontoFijo = 0,
+                AplicaEnColegiatura = true,
+                Activo = true,
+                ReglaHermano = TipoReglaBeca.Ninguna,
+                CicloEscolarId = cicloSeleccionadoId
+            };
         mostrarModal = true;
     }
 
-    void Editar(Beca b) {
-        nuevaBeca = new() {
-            Id = b.Id, Nombre = b.Nombre, Porcentaje = b.Porcentaje, MontoFijo = b.MontoFijo,
-            AplicaEnColegiatura = b.AplicaEnColegiatura, AplicaEnInscripcion = b.AplicaEnInscripcion,
-            CicloEscolarId = b.CicloEscolarId, EscuelaId = b.EscuelaId, Usuario = b.Usuario
-        };
+    void Editar(Beca b)
+    {
+        nuevaBeca = new()
+            {
+                Id = b.Id,
+                Nombre = b.Nombre,
+                Porcentaje = b.Porcentaje,
+                MontoFijo = b.MontoFijo,
+                AplicaEnColegiatura = b.AplicaEnColegiatura,
+                AplicaEnInscripcion = b.AplicaEnInscripcion,
+                ReglaHermano = b.ReglaHermano, // Pasamos la regla existente
+                CicloEscolarId = b.CicloEscolarId,
+                EscuelaId = b.EscuelaId,
+                Usuario = b.Usuario
+            };
         mostrarModal = true;
     }
 
-    async Task Guardar() {
+    async Task Guardar()
+    {
         HttpResponseMessage res;
-        if(nuevaBeca.Id != Guid.Empty) res = await Http.PutAsJsonAsync($"api/Becas/{nuevaBeca.Id}", nuevaBeca);
+        if (nuevaBeca.Id != Guid.Empty) res = await Http.PutAsJsonAsync($"api/Becas/{nuevaBeca.Id}", nuevaBeca);
         else res = await Http.PostAsJsonAsync("api/Becas", nuevaBeca);
 
-        if(res.IsSuccessStatusCode) { mostrarModal = false; await CargarBecas(); }
+        if (res.IsSuccessStatusCode) { mostrarModal = false; await CargarBecas(); }
     }
 
-    async Task Eliminar(Guid id) {
-        if(await JS.InvokeAsync<bool>("confirm", "¿Eliminar esta beca?")) {
-            await Http.DeleteAsync($"api/Becas/{id}");
-            await CargarBecas();
+    async Task Inactivar(Guid id)
+    {
+        if (await JS.InvokeAsync<bool>("confirm", "⚠️ ¿Inactivar esta beca?\n\nYa no aparecerá disponible para nuevas inscripciones, pero se conservará en los estados de cuenta históricos."))
+        {
+            var res = await Http.DeleteAsync($"api/Becas/{id}");
+            if (res.IsSuccessStatusCode)
+            {
+                await CargarBecas();
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("alert", "Error al inactivar la beca.");
+            }
         }
+    }
+
+    // Helper para mostrar un nombre bonito en la etiqueta de la Beca
+    string GetReglaNombre(TipoReglaBeca regla)
+    {
+        return regla switch
+        {
+            TipoReglaBeca.HermanoMayor => "Solo Hermano Mayor",
+            TipoReglaBeca.HermanoMenor => "Solo Hermano Menor",
+            TipoReglaBeca.ColegiaturaMasCara => "Colegiatura más Cara",
+            TipoReglaBeca.ColegiaturaMasBarata => "Colegiatura más Barata",
+            TipoReglaBeca.TodosLosHermanos => "Todos los Hermanos",
+            _ => "Ninguna"
+        };
     }
 }
